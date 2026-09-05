@@ -1,64 +1,40 @@
 import streamlit as st
 import numpy as np
 import pandas as pd
-import cv2
-import pytesseract
-from PIL import Image
-import re
 import plotly.express as px
 
 # ---------------------------------------------------------
 # Cấu hình giao diện Streamlit
 # ---------------------------------------------------------
 st.set_page_config(
-    page_title="Keno Ising Model - Động Lực Học Phi Tuyến",
+    page_title="Keno Ising Model - Bàn Phím Chọn Nhanh",
     page_icon="⚛️",
     layout="wide"
 )
 
-st.title("⚛️ KENO ISING MODEL - ĐỘNG LỰC HỌC PHI TUYẾN & BẬC 3, 5, 6")
-st.markdown("*Chuyển đổi bài toán Keno từ Thống kê Tĩnh sang Hệ Cơ học Thống kê Phi tuyến (Attractor & Phase Transitions).*")
+st.title("⚛️ KENO ISING MODEL - NHẬP NHANH BẰNG BÀN PHÍM 80 SỐ")
+st.markdown("*Nhập kết quả Keno siêu tốc trong 5 giây - Chính xác 100% không lo lỗi OCR.*")
 st.markdown("---")
 
 # ---------------------------------------------------------
-# 1. HÀM OCR TỐI ƯU CHO GIAO DIỆN BẢNG VÀNG / NỀN TRẮNG
+# QUẢN LÝ TRẠNG THÁI BỘ CHỌN SỐ (SESSION STATE)
 # ---------------------------------------------------------
-def extract_numbers_from_image(image_file):
-    try:
-        file_bytes = np.asarray(bytearray(image_file.read()), dtype=np.uint8)
-        img = cv2.imdecode(file_bytes, cv2.IMREAD_COLOR)
-        
-        h, w, _ = img.shape
-        
-        # CẮT BỎ VÙNG RÁC (Chỉ lấy khu vực trung tâm chứa 20 quả bóng)
-        # Loại bỏ 25% phía trên (Thanh giờ, Mã kỳ, Dòng "Tìm thấy 6 kết quả...")
-        # Loại bỏ 20% bên phải (Bảng thống kê Chẵn 12 / Lớn 12)
-        crop_img = img[int(h * 0.25):int(h * 0.85), 0:int(w * 0.80)]
-        
-        gray = cv2.cvtColor(crop_img, cv2.COLOR_BGR2GRAY)
-        
-        # Tăng tương phản cho chữ trong bóng
-        thresh = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY | cv2.THRESH_OTSU)[1]
-        
-        custom_config = r'--oem 3 --psm 6 -c tessedit_char_whitelist=0123456789'
-        text = pytesseract.image_to_string(thresh, config=custom_config)
-        
-        raw_numbers = re.findall(r'\b\d{1,2}\b', text)
-        
-        valid_numbers = []
-        for n in raw_numbers:
-            num = int(n)
-            # Chỉ nhận diện số hợp lệ Keno từ 1-80
-            if 1 <= num <= 80 and num not in valid_numbers:
-                valid_numbers.append(num)
-                
-        valid_numbers.sort()
-        return valid_numbers[:20]
-    except Exception as e:
-        return []
+for k in [1, 2, 3]:
+    if f'selected_k{k}' not in st.session_state:
+        st.session_state[f'selected_k{k}'] = []
+
+def toggle_number(key_name, num):
+    if num in st.session_state[key_name]:
+        st.session_state[key_name].remove(num)
+    else:
+        if len(st.session_state[key_name]) < 20:
+            st.session_state[key_name].append(num)
+
+def clear_selected(key_name):
+    st.session_state[key_name] = []
 
 # ---------------------------------------------------------
-# 2. LÕI THUẬT TOÁN: ISING SPIN GLASS & NONLINEAR DYNAMICS
+# 1. LÕI THUẬT TOÁN: ISING SPIN GLASS
 # ---------------------------------------------------------
 class KenoIsingDynamics:
     def __init__(self, draws, alpha=1.2):
@@ -78,8 +54,7 @@ class KenoIsingDynamics:
     def calculate_external_field(self):
         weights = np.exp(np.linspace(-0.5, 0, self.N_draws))
         weights /= weights.sum()
-        h = np.dot(weights, self.spins_history)
-        return h
+        return np.dot(weights, self.spins_history)
 
     def calculate_coupling_matrix(self):
         J = np.zeros((80, 80))
@@ -94,89 +69,81 @@ class KenoIsingDynamics:
     def compute_attractor_energies(self):
         h = self.calculate_external_field()
         J = self.calculate_coupling_matrix()
-        
         delta_E = np.zeros(80)
         for i in range(80):
             spin_interaction = np.sum(J[i, :] * np.mean(self.spins_history, axis=0))
             delta_E[i] = - (h[i] + self.alpha * spin_interaction)
-            
         return delta_E, h, J
 
     def compute_entropy_state(self):
         p_active = np.mean(self.spins_history == 1, axis=0)
         p_active = np.clip(p_active, 1e-5, 1 - 1e-5)
         entropy_per_spin = - (p_active * np.log2(p_active) + (1 - p_active) * np.log2(1 - p_active))
-        system_entropy = np.mean(entropy_per_spin)
-        return system_entropy, entropy_per_spin
+        return np.mean(entropy_per_spin)
 
-# Hàm định dạng danh sách số nguyên hiển thị đẹp
 def format_numbers(num_list):
     clean_nums = [int(x) for x in sorted(num_list)]
     return " - ".join([f"{x:02d}" for x in clean_nums])
 
 # ---------------------------------------------------------
-# 3. GIAO DIỆN NẠP DỮ LIỆU
+# 2. GIAO DIỆN BÀN PHÍM 80 SỐ CHO 3 KỲ
 # ---------------------------------------------------------
-st.sidebar.header("📥 Nạp Dữ Liệu 3 Kỳ Keno")
-st.sidebar.info("Tải lên 3 ảnh chụp kết quả Keno liên tiếp.")
+st.header("🎮 Bàn Phím Chọn 20 Số Cho 3 Kỳ Vừa Quay")
 
-uploaded_files = st.sidebar.file_uploader(
-    "Chọn 3 ảnh Keno", 
-    type=["jpg", "jpeg", "png"], 
-    accept_multiple_files=True
-)
+tab_k1, tab_k2, tab_k3 = st.tabs(["📌 Kỳ 1 (Kỳ xa nhất)", "📌 Kỳ 2 (Kỳ giữa)", "📌 Kỳ 3 (Kỳ mới nhất)"])
 
-draws_data = []
+tabs = [tab_k1, tab_k2, tab_k3]
 
-if uploaded_files:
-    if len(uploaded_files) != 3:
-        st.warning("⚠️ Vui lòng tải lên ĐÚNG 3 MẪU ẢNH của 3 kỳ quay liên tiếp!")
-    else:
-        st.subheader("📷 Trích xuất & Xác nhận Ma Trận Kỳ")
-        cols = st.columns(3)
+for idx, tab in enumerate(tabs):
+    k_num = idx + 1
+    key_name = f'selected_k{k_num}'
+    
+    with tab:
+        curr_selected = st.session_state[key_name]
+        st.write(f"**Đã chọn ({len(curr_selected)}/20 số):** `{format_numbers(curr_selected) if curr_selected else 'Chưa chọn số nào'}`")
         
-        for idx, file in enumerate(uploaded_files):
-            with cols[idx]:
-                st.image(file, caption=f"Kỳ {idx+1}", use_container_width=True)
-                extracted = extract_numbers_from_image(file)
+        if st.button(f"🗑️ Xóa làm lại Kỳ {k_num}", key=f"btn_clear_{k_num}"):
+            clear_selected(key_name)
+            st.rerun()
+
+        # Tạo ma trận 80 nút bấm (10 cột x 8 hàng)
+        cols_per_row = 10
+        for row in range(8):
+            cols = st.columns(cols_per_row)
+            for col in range(cols_per_row):
+                num = row * cols_per_row + col + 1
+                is_selected = num in curr_selected
                 
-                numbers_str = st.text_input(
-                    f"20 số Kỳ {idx+1}:",
-                    value=", ".join(map(str, extracted)) if extracted else ""
-                )
+                # Kiểu hiển thị nút khi được chọn / chưa chọn
+                btn_label = f"[{num:02d}]" if is_selected else f"{num:02d}"
+                btn_type = "primary" if is_selected else "secondary"
                 
-                parsed_nums = [int(x.strip()) for x in numbers_str.split(",") if x.strip().isdigit() and 1 <= int(x.strip()) <= 80]
-                draws_data.append(parsed_nums)
+                if cols[col].button(btn_label, key=f"btn_k{k_num}_{num}", type=btn_type, use_container_width=True):
+                    toggle_number(key_name, num)
+                    st.rerun()
 
 # ---------------------------------------------------------
-# 4. CHẠY MÔ HÌNH ĐỘNG LỰC HỌC PHI TUYẾN
+# 3. CHẠY PHÂN TÍCH ISING DYNAMICAL MODEL
 # ---------------------------------------------------------
-if len(draws_data) == 3 and all(len(d) > 0 for d in draws_data):
+draws_data = [st.session_state['selected_k1'], st.session_state['selected_k2'], st.session_state['selected_k3']]
+
+if all(len(d) == 20 for d in draws_data):
     st.markdown("---")
-    st.success("✅ Đã khởi tạo thành công Không gian Trạng thái Spin từ dữ liệu 3 kỳ!")
+    st.success("✅ Đã nhận đủ 20/20 số cho cả 3 kỳ! Đang tính toán ma trận Ising...")
 
     model = KenoIsingDynamics(draws_data)
     delta_E, h_field, J_matrix = model.compute_attractor_energies()
-    system_entropy, spin_entropies = model.compute_entropy_state()
+    system_entropy = model.compute_entropy_state()
 
     sorted_indices = np.argsort(delta_E)
     top_attractors = [int(idx + 1) for idx in sorted_indices]
 
     # Hiển thị chỉ số
-    st.header("🌀 Mức Độ Hỗn Loạn & Pha Trạng Thái (Phase State)")
+    st.header("🌀 Trạng Thái Hệ Thống & Bộ Số Gợi Ý")
     
-    col_m1, col_m2, col_m3 = st.columns(3)
+    col_m1, col_m2 = st.columns(2)
     col_m1.metric("Entropy Shannon Toàn Cục", f"{system_entropy:.4f} bits")
-    
-    if system_entropy < 0.65:
-        phase_status = "🟢 Pha Điểm Hút (Attractor) - Độ ổn định cao"
-    elif system_entropy < 0.85:
-        phase_status = "🟡 Pha Chuyển Tiếp (Transition)"
-    else:
-        phase_status = "🔴 Pha Hỗn Loạn (Chaos) - Biên độ biến động rộng"
-        
-    col_m2.metric("Trạng Thái Pha Hệ Thống", phase_status)
-    col_m3.metric("Năng Lượng Cực Tiểu (E_min)", f"{float(delta_E[sorted_indices[0]]):.3f}")
+    col_m2.metric("Năng Lượng Cực Tiểu (E_min)", f"{float(delta_E[sorted_indices[0]]):.3f}")
 
     # Gợi ý Bậc 3 - 5 - 6
     st.markdown("---")
@@ -185,39 +152,23 @@ if len(draws_data) == 3 and all(len(d) > 0 for d in draws_data):
     tab3, tab5, tab6 = st.tabs(["🔥 Gợi Ý Bậc 3", "⚡ Gợi Ý Bậc 5", "💎 Gợi Ý Bậc 6"])
 
     with tab3:
-        st.subheader("📌 Bộ Số Bậc 3 (Năng lượng cực tiểu & Liên kết cặp tối ưu)")
+        st.subheader("📌 Bộ Số Bậc 3")
         c1, c2, c3 = st.columns(3)
         c1.metric("Bậc 3 - Điểm hút 1", format_numbers(top_attractors[:3]))
         c2.metric("Bậc 3 - Điểm hút 2", format_numbers(top_attractors[3:6]))
         c3.metric("Bậc 3 - Cân bằng", format_numbers([top_attractors[0], top_attractors[1], top_attractors[6]]))
 
     with tab5:
-        st.subheader("📌 Bộ Số Bậc 5 (Tương tác từ trường chéo)")
+        st.subheader("📌 Bộ Số Bậc 5")
         c1, c2 = st.columns(2)
         c1.metric("Bậc 5 - Cấu hình Năng lượng thấp nhất", format_numbers(top_attractors[:5]))
         c2.metric("Bậc 5 - Cấu hình Mở rộng", format_numbers(top_attractors[2:7]))
 
     with tab6:
-        st.subheader("📌 Bộ Số Bậc 6 (Cực tiểu hóa Hamiltonian)")
+        st.subheader("📌 Bộ Số Bậc 6")
         c1, c2 = st.columns(2)
         c1.metric("Bậc 6 - Điểm hút Chính", format_numbers(top_attractors[:6]))
         c2.metric("Bậc 6 - Điểm hút Phụ", format_numbers(top_attractors[1:7]))
 
-    # Trực quan hóa
-    st.markdown("---")
-    st.header("📊 Trực Quan Hóa Động Lực Học Hệ Thống")
-    
-    col_v1, col_v2 = st.columns(2)
-    with col_v1:
-        st.subheader("Bản đồ Năng lượng Spin $E_i$ (80 Hạt)")
-        df_energy = pd.DataFrame({'Số': [i + 1 for i in range(80)], 'Năng lượng E_i': delta_E})
-        fig_energy = px.bar(df_energy, x='Số', y='Năng lượng E_i', color='Năng lượng E_i', color_continuous_scale='Viridis_r')
-        st.plotly_chart(fig_energy, use_container_width=True)
-
-    with col_v2:
-        st.subheader("Ma Trận Liên Kết Tương Tác Cặp $J_{ij}$")
-        fig_heatmap = px.imshow(J_matrix, x=[i + 1 for i in range(80)], y=[i + 1 for i in range(80)], color_continuous_scale='RdBu_r')
-        st.plotly_chart(fig_heatmap, use_container_width=True)
-
 else:
-    st.info("👈 Vui lòng tải đủ 3 ảnh Keno ở bảng bên trái để chạy mô hình Động lực học Ising.")
+    st.info("👈 Vui lòng bấm chọn ĐỦ 20 SỐ cho cả 3 kỳ ở trên để hiển thị dự đoán Bậc 3, 5, 6.")
