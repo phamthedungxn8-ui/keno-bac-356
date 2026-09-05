@@ -5,7 +5,7 @@ import itertools
 import re
 
 # ---------------------------------------------------------
-# CẤU HÌNH GIAO DIỆN STREAMLIT
+# CẤU HÌNH GIAO DIỆN
 # ---------------------------------------------------------
 st.set_page_config(
     page_title="Keno Ising Model - Strict 3-Tier Architecture",
@@ -18,54 +18,51 @@ st.caption("1️⃣ Real Historical Baseline (J) | 2️⃣ Impulse Perturbation 
 st.markdown("---")
 
 # ---------------------------------------------------------
-# HÀM XỬ LÝ DỮ LIỆU THÔNG MINH (TỰ ĐỘNG TÁCH SỐ DÍNH LIỀN)
+# THUẬT TOÁN BÓC TÁCH SỐ THÔNG MINH (XỬ LÝ DÍNH LIỀN 100%)
 # ---------------------------------------------------------
-def extract_numbers_from_text(text):
+def extract_all_valid_numbers(text):
     """
-    Tự động trích xuất các số từ 1 đến 80:
-    - Hỗ trợ chuỗi dính liền từ minhchinh.com (VD: 06070911 -> 06, 07, 09, 11)
-    - Hỗ trợ văn bản có khoảng trắng, dấu phẩy, dấu gạch ngang
+    Bóc tách toàn bộ danh sách các số từ 1-80 trong văn bản.
+    Hỗ trợ dính liền kiểu 060709... hoặc có khoảng trắng, phẩy, gạch ngang.
     """
     if not text:
         return []
     
-    # 1. Nếu có khoảng trắng hoặc ký tự phân cách, tách theo phân cách trước
-    tokens = re.split(r'[\s,\t\n\-]+', text.strip())
+    # 1. Nếu văn bản là chuỗi dài toàn chữ số dính liền (không khoảng trắng)
+    raw_digits = re.sub(r'\D', '', text)
     
+    # Nếu là chuỗi chữ số dính liền có độ dài chẵn (mỗi số 2 chữ số)
     extracted_nums = []
-    for token in tokens:
-        clean_token = re.sub(r'\D', '', token) # Chỉ giữ lại chữ số
-        if not clean_token:
-            continue
-            
-        # Nếu đoạn chữ số dài > 2 (VD: dính liền kiểu 06070911...), cứ 2 chữ số cắt 1 lần
-        if len(clean_token) > 2 and len(clean_token) % 2 == 0:
-            for i in range(0, len(clean_token), 2):
-                num = int(clean_token[i:i+2])
-                if 1 <= num <= 80:
-                    extracted_nums.append(num)
-        else:
-            num = int(clean_token)
+    if len(raw_digits) >= 2:
+        for i in range(0, len(raw_digits) - 1, 2):
+            num_str = raw_digits[i:i+2]
+            num = int(num_str)
             if 1 <= num <= 80:
                 extracted_nums.append(num)
                 
     return extracted_nums
 
 def parse_multi_line_input(text):
-    """Xử lý nhập nhiều kỳ cho Tầng 1"""
-    lines = text.strip().split('\n')
+    """
+    Tự động nhóm cứ đúng 20 số hợp lệ thành 1 kỳ hoàn chỉnh.
+    Bất kể người dùng dán 1 dòng dài hay nhiều dòng.
+    """
+    all_nums = extract_all_valid_numbers(text)
     draws = []
-    for line in lines:
-        nums = extract_numbers_from_text(line)
-        # Loại bỏ trùng lặp trong cùng 1 kỳ nhưng vẫn giữ thứ tự / sắp xếp
-        unique_nums = sorted(list(dict.fromkeys(nums)))
-        if len(unique_nums) == 20:
-            draws.append(unique_nums)
+    
+    # Cắt danh sách tổng thành từng cụm 20 số
+    for i in range(0, len(all_nums), 20):
+        chunk = all_nums[i:i+20]
+        # Đảm bảo cụm đủ 20 số và không trùng lặp trong cùng kỳ
+        unique_chunk = sorted(list(set(chunk)))
+        if len(chunk) == 20 and len(unique_chunk) == 20:
+            draws.append(unique_chunk)
+            
     return draws
 
-def parse_input_string(text):
-    """Xử lý nhập 1 kỳ (20 số) cho Tầng 2"""
-    nums = extract_numbers_from_text(text)
+def parse_single_draw_input(text):
+    """Trích xuất duy nhất 1 kỳ (20 số) cho Tầng 2"""
+    nums = extract_all_valid_numbers(text)
     unique_nums = sorted(list(dict.fromkeys(nums)))
     return unique_nums[:20]
 
@@ -164,7 +161,7 @@ class ConfigurationEnergySolver:
 # 1️⃣ TẦNG 1: DỮ LIỆU NỀN LỊCH SỬ THỰC TẾ
 # =========================================================
 st.header("1️⃣ TẦNG 1: Nạp Dữ Liệu Nền Lịch Sử Thực (Bắt Buộc)")
-st.caption("Ma trận J_ij chỉ được phép tính khi có dữ liệu lịch sử thực tế (Tối thiểu 10 kỳ).")
+st.caption("Ma trận J_ij chỉ được tính khi có đủ dữ liệu lịch sử thực tế (Tối thiểu 10 kỳ).")
 
 tab_manual, tab_file = st.tabs(["📝 Nhập Văn Bản Lịch Sử", "📁 Tải File CSV Lịch Sử"])
 
@@ -172,8 +169,8 @@ history_data = []
 
 with tab_manual:
     manual_text = st.text_area(
-        "Dán chuỗi kết quả lịch sử (Hỗ trợ copy dính liền từ minhchinh.com):",
-        placeholder="Dán chuỗi 06070911121719... hoặc dạng có khoảng trắng",
+        "Dán chuỗi kết quả lịch sử (Dán dính liền liên tục nhiều kỳ thoải mái):",
+        placeholder="Dán chuỗi 0607091112171924283435384247495062687072...",
         height=150
     )
     if manual_text.strip():
@@ -185,11 +182,11 @@ with tab_file:
         content = uploaded_file.read().decode("utf-8")
         history_data = parse_multi_line_input(content)
 
-# Kiểm duyệt dữ liệu Tầng 1
+# Trạng thái nhận diện Tầng 1
 if len(history_data) >= 10:
-    st.success(f"✅ TẦNG 1 HỢP LỆ: Đã nhận diện thành công **{len(history_data)} kỳ** đủ 20 số.")
+    st.success(f"✅ TẦNG 1 HỢP LỆ: Đã tự động bóc tách thành công **{len(history_data)} kỳ chuẩn** (mỗi kỳ 20 số).")
 else:
-    st.error(f"❌ TẦNG 1 CHƯA ĐỦ DỮ LIỆU: Đã nhận diện **{len(history_data)} kỳ** chuẩn. Cần tối thiểu **10 kỳ** (mỗi kỳ đủ 20 số).")
+    st.error(f"❌ TẦNG 1 CHƯA ĐỦ DỮ LIỆU: Hiện đã bóc tách được **{len(history_data)} kỳ chuẩn**. Cần dán thêm để đạt tối thiểu **10 kỳ**.")
 
 st.markdown("---")
 
@@ -200,30 +197,38 @@ st.header("2️⃣ TẦNG 2: Nhập 3 Kỳ Quay Kích Thích (Trường Ngoài h
 
 col1, col2, col3 = st.columns(3)
 with col1:
-    k1_text = st.text_area("Kỳ 1 (Dán dính liền hoặc khoảng trắng):", "", height=100)
-    d1 = parse_input_string(k1_text)
+    k1_text = st.text_area("Kỳ 1 (20 số dính liền hoặc thưa):", "", height=90)
+    d1 = parse_single_draw_input(k1_text)
     if len(d1) == 20:
-        st.caption(f"✓ Đã tách: `{format_numbers(d1)}`")
+        st.caption(f"✓ Kỳ 1: `{format_numbers(d1)}`")
+    else:
+        st.caption(f"⚠️ Mới nhận: {len(d1)}/20 số")
+
 with col2:
-    k2_text = st.text_area("Kỳ 2 (Dán dính liền hoặc khoảng trắng):", "", height=100)
-    d2 = parse_input_string(k2_text)
+    k2_text = st.text_area("Kỳ 2 (20 số dính liền hoặc thưa):", "", height=90)
+    d2 = parse_single_draw_input(k2_text)
     if len(d2) == 20:
-        st.caption(f"✓ Đã tách: `{format_numbers(d2)}`")
+        st.caption(f"✓ Kỳ 2: `{format_numbers(d2)}`")
+    else:
+        st.caption(f"⚠️ Mới nhận: {len(d2)}/20 số")
+
 with col3:
-    k3_text = st.text_area("Kỳ 3 (Dán dính liền hoặc khoảng trắng):", "", height=100)
-    d3 = parse_input_string(k3_text)
+    k3_text = st.text_area("Kỳ 3 (20 số dính liền hoặc thưa):", "", height=90)
+    d3 = parse_single_draw_input(k3_text)
     if len(d3) == 20:
-        st.caption(f"✓ Đã tách: `{format_numbers(d3)}`")
+        st.caption(f"✓ Kỳ 3: `{format_numbers(d3)}`")
+    else:
+        st.caption(f"⚠️ Mới nhận: {len(d3)}/20 số")
 
 st.markdown("---")
 
 # =========================================================
 # 3️⃣ TẦNG 3: TỐI ƯU NĂNG LƯỢNG CẤU HÌNH (E_min)
 # =========================================================
-st.header("3️⃣ TẦNG 3: Kết Quả Dự Đoán Tối Ưu Năng LƯợng")
+st.header("3️⃣ TẦNG 3: Kết Quả Dự Đoán Tối Ưu Năng Lượng")
 
 if len(history_data) < 10:
-    st.warning("🔒 Tầng 3 bị khóa: Vui lòng nạp đủ 10 kỳ ở Tầng 1.")
+    st.warning("🔒 Tầng 3 bị khóa: Vui lòng nạp đủ tối thiểu 10 kỳ ở Tầng 1.")
 elif len(d1) != 20 or len(d2) != 20 or len(d3) != 20:
     st.warning("🔒 Tầng 3 bị khóa: Vui lòng dán đủ 20 số cho từng kỳ ở Tầng 2.")
 else:
