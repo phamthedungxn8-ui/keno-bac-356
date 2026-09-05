@@ -41,7 +41,7 @@ class HistoricalBaselineEngine:
                     S[t, num - 1] = 1.0
         return S
 
-    def compute_coupling_matrix(()) -> np.ndarray:
+    def compute_coupling_matrix(self) -> np.ndarray:
         """
         Tính toán ma trận tương tác J_ij dựa trên Hiệp phương sai Ising.
         """
