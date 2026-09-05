@@ -89,7 +89,6 @@ class KenoIsingDynamics:
         J = self.calculate_coupling_matrix()
         
         # Mức đóng góp năng lượng phi tuyến cho từng hạt Spin i: Delta_E_i
-        # Trạng thái bị thu hút (Attractor State) tương ứng với Delta_E nhỏ nhất
         delta_E = np.zeros(80)
         for i in range(80):
             spin_interaction = np.sum(J[i, :] * np.mean(self.spins_history, axis=0))
@@ -99,12 +98,18 @@ class KenoIsingDynamics:
         return delta_E, h, J
 
     def compute_entropy_state(self):
-        # Tính Entropy Shannon toàn cục của hệ thống qua 3 kỳ
+        # Tính Entropy Shannon toàn cục của hệ thống
         p_active = np.mean(self.spins_history == 1, axis=0)
         p_active = np.clip(p_active, 1e-5, 1 - 1e-5)
         entropy_per_spin = - (p_active * np.log2(p_active) + (1 - p_active) * np.log2(1 - p_active))
         system_entropy = np.mean(entropy_per_spin)
         return system_entropy, entropy_per_spin
+
+# Hàm định dạng danh sách số nguyên hiển thị đẹp mắt
+def format_numbers(num_list):
+    # Ép kiểu int thuần túy của Python để loại bỏ hoàn toàn np.int64
+    clean_nums = [int(x) for x in sorted(num_list)]
+    return " - ".join([f"{x:02d}" for x in clean_nums])
 
 # ---------------------------------------------------------
 # 3. GIAO DIỆN NẠP DỮ LIỆU
@@ -153,9 +158,9 @@ if len(draws_data) == 3 and all(len(d) > 0 for d in draws_data):
     system_entropy, spin_entropies = model.compute_entropy_state()
 
     # Sắp xếp các số theo Năng lượng cực tiểu (Thấp nhất = Hấp dẫn nhất)
-    # Lấy chỉ số từ 0..79 chuyển thành số 1..80
-    sorted_indices = np.argsort(delta_E) # Tăng dần theo năng lượng
-    top_attractors = [idx + 1 for idx in sorted_indices]
+    # Ép kiểu int(...) trực tiếp để loại bỏ hoàn toàn kiểu np.int64
+    sorted_indices = np.argsort(delta_E)
+    top_attractors = [int(idx + 1) for idx in sorted_indices]
 
     # ---------------------------------------------------------
     # HIỂN THỊ CHỈ SỐ TRẠNG THÁI HỆ THỐNG
@@ -174,7 +179,7 @@ if len(draws_data) == 3 and all(len(d) > 0 for d in draws_data):
         phase_status = "🔴 Pha Hỗn Loạn (Chaos) - Biên độ biến động rộng"
         
     col_m2.metric("Trạng Thái Pha Hệ Thống", phase_status)
-    col_m3.metric("Năng Lượng Cực Tiểu (E_min)", f"{delta_E[sorted_indices[0]]:.3f}")
+    col_m3.metric("Năng Lượng Cực Tiểu (E_min)", f"{float(delta_E[sorted_indices[0]]):.3f}")
 
     # ---------------------------------------------------------
     # GỢI Ý BẬC 3 - BẬC 5 - BẬC 6 THEO MÔ HÌNH ISING
@@ -187,34 +192,34 @@ if len(draws_data) == 3 and all(len(d) > 0 for d in draws_data):
     with tab3:
         st.subheader("📌 Bộ Số Bậc 3 (Năng lượng cực tiểu & Liên kết cặp tối ưu)")
         
-        b3_set1 = sorted(top_attractors[:3])
-        b3_set2 = sorted(top_attractors[3:6])
-        b3_set3 = sorted([top_attractors[0], top_attractors[1], top_attractors[6]])
+        b3_set1 = top_attractors[:3]
+        b3_set2 = top_attractors[3:6]
+        b3_set3 = [top_attractors[0], top_attractors[1], top_attractors[6]]
         
         c1, c2, c3 = st.columns(3)
-        c1.metric("Bậc 3 - Điểm hút 1", f"{b3_set1}")
-        c2.metric("Bậc 3 - Điểm hút 2", f"{b3_set2}")
-        c3.metric("Bậc 3 - Cân bằng", f"{b3_set3}")
+        c1.metric("Bậc 3 - Điểm hút 1", format_numbers(b3_set1))
+        c2.metric("Bậc 3 - Điểm hút 2", format_numbers(b3_set2))
+        c3.metric("Bậc 3 - Cân bằng", format_numbers(b3_set3))
 
     with tab5:
         st.subheader("📌 Bộ Số Bậc 5 (Tương tác từ trường chéo)")
         
-        b5_set1 = sorted(top_attractors[:5])
-        b5_set2 = sorted(top_attractors[2:7])
+        b5_set1 = top_attractors[:5]
+        b5_set2 = top_attractors[2:7]
         
         c1, c2 = st.columns(2)
-        c1.metric("Bậc 5 - Cấu hình Năng lượng thấp nhất", f"{b5_set1}")
-        c2.metric("Bậc 5 - Cấu hình Mở rộng", f"{b5_set2}")
+        c1.metric("Bậc 5 - Cấu hình Năng lượng thấp nhất", format_numbers(b5_set1))
+        c2.metric("Bậc 5 - Cấu hình Mở rộng", format_numbers(b5_set2))
 
     with tab6:
         st.subheader("📌 Bộ Số Bậc 6 (Cực tiểu hóa Hamiltonian)")
         
-        b6_set1 = sorted(top_attractors[:6])
-        b6_set2 = sorted(top_attractors[1:7])
+        b6_set1 = top_attractors[:6]
+        b6_set2 = top_attractors[1:7]
         
         c1, c2 = st.columns(2)
-        c1.metric("Bậc 6 - Điểm hút Chính", f"{b6_set1}")
-        c2.metric("Bậc 6 - Điểm hút Phụ", f"{b6_set2}")
+        c1.metric("Bậc 6 - Điểm hút Chính", format_numbers(b6_set1))
+        c2.metric("Bậc 6 - Điểm hút Phụ", format_numbers(b6_set2))
 
     # ---------------------------------------------------------
     # TRỰC QUAN HÓA TRƯỜNG PHI TUYẾN (ISING HEATMAP & ENERGY)
