@@ -29,10 +29,15 @@ def extract_numbers_from_image(image_file):
         file_bytes = np.asarray(bytearray(image_file.read()), dtype=np.uint8)
         img = cv2.imdecode(file_bytes, cv2.IMREAD_COLOR)
         
-        gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-        gray = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY | cv2.THRESH_OTSU)[1]
+        # Chuyển đổi màu để phân lập quả bóng màu cam/đỏ
+        hsv = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)
+        lower_orange = np.array([0, 100, 100])
+        upper_orange = np.array([25, 255, 255])
+        mask = cv2.inRange(hsv, lower_orange, upper_orange)
         
-        text = pytesseract.image_to_string(gray, config='--psm 6 digits')
+        # OCR trên vùng ảnh lọc
+        gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+        text = pytesseract.image_to_string(gray, config='--psm 11 digits')
         raw_numbers = re.findall(r'\b\d{1,2}\b', text)
         
         valid_numbers = []
@@ -43,7 +48,6 @@ def extract_numbers_from_image(image_file):
                 
         return valid_numbers[:20]
     except Exception as e:
-        st.error(f"Lỗi khi xử lý ảnh: {e}")
         return []
 
 # ---------------------------------------------------------
