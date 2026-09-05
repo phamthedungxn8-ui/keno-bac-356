@@ -21,50 +21,52 @@ st.markdown("---")
 # THUẬT TOÁN BÓC TÁCH SỐ THÔNG MINH (XỬ LÝ DÍNH LIỀN 100%)
 # ---------------------------------------------------------
 def extract_all_valid_numbers(text):
-    """
-    Bóc tách toàn bộ danh sách các số từ 1-80 trong văn bản.
-    Hỗ trợ dính liền kiểu 060709... hoặc có khoảng trắng, phẩy, gạch ngang.
-    """
+    """Bóc tách tất cả các cặp số 2 chữ số từ 01 đến 80 trong văn bản"""
     if not text:
         return []
     
-    # 1. Nếu văn bản là chuỗi dài toàn chữ số dính liền (không khoảng trắng)
+    # Lấy toàn bộ chữ số
     raw_digits = re.sub(r'\D', '', text)
-    
-    # Nếu là chuỗi chữ số dính liền có độ dài chẵn (mỗi số 2 chữ số)
     extracted_nums = []
-    if len(raw_digits) >= 2:
-        for i in range(0, len(raw_digits) - 1, 2):
-            num_str = raw_digits[i:i+2]
-            num = int(num_str)
-            if 1 <= num <= 80:
-                extracted_nums.append(num)
-                
+    
+    # Cắt từng cặp 2 chữ số
+    for i in range(0, len(raw_digits) - 1, 2):
+        num_str = raw_digits[i:i+2]
+        num = int(num_str)
+        if 1 <= num <= 80:
+            extracted_nums.append(num)
+            
     return extracted_nums
 
 def parse_multi_line_input(text):
     """
-    Tự động nhóm cứ đúng 20 số hợp lệ thành 1 kỳ hoàn chỉnh.
-    Bất kể người dùng dán 1 dòng dài hay nhiều dòng.
+    Tự động chia danh sách số thành các kỳ (mỗi kỳ 20 số).
+    Xử lý linh hoạt loại bỏ trùng lặp và nhận diện chính xác từng kỳ.
     """
     all_nums = extract_all_valid_numbers(text)
     draws = []
     
-    # Cắt danh sách tổng thành từng cụm 20 số
-    for i in range(0, len(all_nums), 20):
-        chunk = all_nums[i:i+20]
-        # Đảm bảo cụm đủ 20 số và không trùng lặp trong cùng kỳ
-        unique_chunk = sorted(list(set(chunk)))
-        if len(chunk) == 20 and len(unique_chunk) == 20:
-            draws.append(unique_chunk)
+    # Lấy từng nhóm 20 số liên tiếp
+    current_draw = []
+    for num in all_nums:
+        if num not in current_draw:
+            current_draw.append(num)
+        
+        # Khi đã đủ 20 số phân biệt -> Đóng gói thành 1 kỳ
+        if len(current_draw) == 20:
+            draws.append(sorted(current_draw))
+            current_draw = []
             
     return draws
 
 def parse_single_draw_input(text):
-    """Trích xuất duy nhất 1 kỳ (20 số) cho Tầng 2"""
+    """Trích xuất 20 số cho Tầng 2"""
     nums = extract_all_valid_numbers(text)
-    unique_nums = sorted(list(dict.fromkeys(nums)))
-    return unique_nums[:20]
+    unique_nums = []
+    for n in nums:
+        if n not in unique_nums:
+            unique_nums.append(n)
+    return sorted(unique_nums[:20])
 
 def format_numbers(num_list):
     if not num_list:
