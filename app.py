@@ -24,20 +24,22 @@ st.markdown("---")
 # ---------------------------------------------------------
 # 1. Tiền xử lý hình ảnh & OCR
 # ---------------------------------------------------------
-def extract_numbers_from_image(image_file):
+def extract_keno_minhchinh(image_file):
     try:
         file_bytes = np.asarray(bytearray(image_file.read()), dtype=np.uint8)
         img = cv2.imdecode(file_bytes, cv2.IMREAD_COLOR)
         
-        # Chuyển đổi màu để phân lập quả bóng màu cam/đỏ
-        hsv = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)
-        lower_orange = np.array([0, 100, 100])
-        upper_orange = np.array([25, 255, 255])
-        mask = cv2.inRange(hsv, lower_orange, upper_orange)
-        
-        # OCR trên vùng ảnh lọc
+        # 1. Chuyển sang ảnh xám
         gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-        text = pytesseract.image_to_string(gray, config='--psm 11 digits')
+        
+        # 2. Phân ngưỡng Otsu để tách chữ đen ra khỏi nền trắng/cam
+        _, thresh = cv2.threshold(gray, 150, 255, cv2.THRESH_BINARY)
+        
+        # 3. Trích xuất chữ số
+        custom_config = r'--oem 3 --psm 6 -c tessedit_char_whitelist=0123456789'
+        text = pytesseract.image_to_string(thresh, config=custom_config)
+        
+        # 4. Bắt số từ 01 đến 80
         raw_numbers = re.findall(r'\b\d{1,2}\b', text)
         
         valid_numbers = []
