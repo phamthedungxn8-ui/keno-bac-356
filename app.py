@@ -4,16 +4,28 @@ import pandas as pd
 import plotly.express as px
 
 # ---------------------------------------------------------
-# Cấu hình giao diện Streamlit
+# Cấu hình giao diện Streamlit Tối ưu Mobile
 # ---------------------------------------------------------
 st.set_page_config(
-    page_title="Keno Ising Model - Bàn Phím Chọn Nhanh",
+    page_title="Keno Ising Model - Bàn Phím Tối Ưu Mobile",
     page_icon="⚛️",
     layout="wide"
 )
 
-st.title("⚛️ KENO ISING MODEL - NHẬP NHANH BẰNG BÀN PHÍM 80 SỐ")
-st.markdown("*Nhập kết quả Keno siêu tốc trong 5 giây - Chính xác 100% không lo lỗi OCR.*")
+# CSS tùy chỉnh để làm nút bấm to hơn, dễ chạm trên điện thoại
+st.markdown("""
+    <style>
+    div.stButton > button {
+        height: 3em;
+        font-weight: bold;
+        font-size: 16px;
+        margin-bottom: 2px;
+    }
+    </style>
+""", unsafe_allow_html=True)
+
+st.title("⚛️ KENO ISING MODEL - BÀN PHÍM TỐI ƯU CẢM ỨNG")
+st.markdown("*Bố trí Lưới 5 cột - Nút bấm to, phân vùng màu dễ chọn nhất trên điện thoại.*")
 st.markdown("---")
 
 # ---------------------------------------------------------
@@ -86,12 +98,11 @@ def format_numbers(num_list):
     return " - ".join([f"{x:02d}" for x in clean_nums])
 
 # ---------------------------------------------------------
-# 2. GIAO DIỆN BÀN PHÍM 80 SỐ CHO 3 KỲ
+# 2. GIAO DIỆN LƯỚI 5 CỘT TỐI ƯU THAO TÁC
 # ---------------------------------------------------------
-st.header("🎮 Bàn Phím Chọn 20 Số Cho 3 Kỳ Vừa Quay")
+st.header("🎮 Chọn 20 Số Cho 3 Kỳ Vừa Quay")
 
 tab_k1, tab_k2, tab_k3 = st.tabs(["📌 Kỳ 1 (Kỳ xa nhất)", "📌 Kỳ 2 (Kỳ giữa)", "📌 Kỳ 3 (Kỳ mới nhất)"])
-
 tabs = [tab_k1, tab_k2, tab_k3]
 
 for idx, tab in enumerate(tabs):
@@ -100,22 +111,39 @@ for idx, tab in enumerate(tabs):
     
     with tab:
         curr_selected = st.session_state[key_name]
-        st.write(f"**Đã chọn ({len(curr_selected)}/20 số):** `{format_numbers(curr_selected) if curr_selected else 'Chưa chọn số nào'}`")
         
-        if st.button(f"🗑️ Xóa làm lại Kỳ {k_num}", key=f"btn_clear_{k_num}"):
-            clear_selected(key_name)
-            st.rerun()
+        # Thanh trạng thái tiến độ
+        col_info, col_btn = st.columns([3, 1])
+        with col_info:
+            st.subheader(f"Đã chọn: {len(curr_selected)}/20 số")
+            if curr_selected:
+                st.info(f"👉 `{format_numbers(curr_selected)}`")
+        with col_btn:
+            if st.button(f"🗑️ Xóa Kỳ {k_num}", key=f"btn_clear_{k_num}", use_container_width=True):
+                clear_selected(key_name)
+                st.rerun()
 
-        # Tạo ma trận 80 nút bấm (10 cột x 8 hàng)
-        cols_per_row = 10
-        for row in range(8):
+        st.markdown("---")
+        
+        # TẠO LƯỚI 5 CỘT (Mỗi hàng 5 nút - Phù hợp ngón tay bấm trên điện thoại)
+        cols_per_row = 5
+        total_numbers = 80
+        
+        for row in range(total_numbers // cols_per_row):
+            # Cứ sau 4 hàng (20 số) sẽ chèn tiêu đề nhóm hàng chục để dễ nhìn
+            start_num = row * cols_per_row + 1
+            if (start_num - 1) % 20 == 0:
+                group_start = start_num
+                group_end = start_num + 19
+                st.caption(f"🔻 **Vùng số {group_start:02d} đến {group_end:02d}**")
+
             cols = st.columns(cols_per_row)
             for col in range(cols_per_row):
                 num = row * cols_per_row + col + 1
                 is_selected = num in curr_selected
                 
-                # Kiểu hiển thị nút khi được chọn / chưa chọn
-                btn_label = f"[{num:02d}]" if is_selected else f"{num:02d}"
+                # Nhãn hiển thị trực quan
+                btn_label = f"✅ {num:02d}" if is_selected else f"{num:02d}"
                 btn_type = "primary" if is_selected else "secondary"
                 
                 if cols[col].button(btn_label, key=f"btn_k{k_num}_{num}", type=btn_type, use_container_width=True):
@@ -129,7 +157,7 @@ draws_data = [st.session_state['selected_k1'], st.session_state['selected_k2'], 
 
 if all(len(d) == 20 for d in draws_data):
     st.markdown("---")
-    st.success("✅ Đã nhận đủ 20/20 số cho cả 3 kỳ! Đang tính toán ma trận Ising...")
+    st.success("✅ Đã chọn đủ 20/20 số cho 3 kỳ! Đang tính toán ma trận Ising...")
 
     model = KenoIsingDynamics(draws_data)
     delta_E, h_field, J_matrix = model.compute_attractor_energies()
