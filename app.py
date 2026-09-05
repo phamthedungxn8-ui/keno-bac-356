@@ -40,22 +40,29 @@ def extract_all_valid_numbers(text):
 
 def parse_multi_line_input(text):
     """
-    Tự động chia danh sách số thành các kỳ (mỗi kỳ 20 số).
-    Xử lý linh hoạt loại bỏ trùng lặp và nhận diện chính xác từng kỳ.
+    Xử lý tách biệt từng dòng xuống dòng.
+    Mỗi dòng đúng 40 chữ số (20 cặp số) sẽ tính là 1 kỳ chuẩn.
     """
-    all_nums = extract_all_valid_numbers(text)
+    if not text:
+        return []
+        
+    lines = text.strip().split('\n')
     draws = []
     
-    # Lấy từng nhóm 20 số liên tiếp
-    current_draw = []
-    for num in all_nums:
-        if num not in current_draw:
-            current_draw.append(num)
+    for line in lines:
+        # Lấy toàn bộ chữ số trên từng dòng riêng biệt
+        raw_digits = re.sub(r'\D', '', line.strip())
         
-        # Khi đã đủ 20 số phân biệt -> Đóng gói thành 1 kỳ
-        if len(current_draw) == 20:
-            draws.append(sorted(current_draw))
-            current_draw = []
+        # Bóc tách từng cặp 2 chữ số
+        nums_in_line = []
+        for i in range(0, len(raw_digits) - 1, 2):
+            num = int(raw_digits[i:i+2])
+            if 1 <= num <= 80:
+                nums_in_line.append(num)
+        
+        # Nếu dòng đó có đủ từ 20 số trở lên -> Lấy đúng 20 số đầu tiên
+        if len(nums_in_line) >= 20:
+            draws.append(sorted(nums_in_line[:20]))
             
     return draws
 
