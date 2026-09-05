@@ -2,30 +2,41 @@ import streamlit as st
 import numpy as np
 import pandas as pd
 import plotly.express as px
+import re
 
 # ---------------------------------------------------------
-# Cấu hình giao diện Streamlit Tối ưu Mobile
+# Cấu hình giao diện Streamlit Tối ưu Mobile Compact
 # ---------------------------------------------------------
 st.set_page_config(
-    page_title="Keno Ising Model - Bàn Phím Tối Ưu Mobile",
+    page_title="Keno Ising Model - Compact Pad",
     page_icon="⚛️",
     layout="wide"
 )
 
-# CSS tùy chỉnh để làm nút bấm to hơn, dễ chạm trên điện thoại
+# CSS Tùy chỉnh ép siêu nhỏ lề và nút bấm để vừa 1 màn hình
 st.markdown("""
     <style>
+    .block-container {
+        padding-top: 1rem !important;
+        padding-bottom: 1rem !important;
+        padding-left: 0.5rem !important;
+        padding-right: 0.5rem !important;
+    }
+    div[data-testid="column"] {
+        padding: 0px 1px !important;
+    }
     div.stButton > button {
-        height: 3em;
-        font-weight: bold;
-        font-size: 16px;
-        margin-bottom: 2px;
+        height: 2.2rem !important;
+        padding: 0px !important;
+        font-size: 13px !important;
+        font-weight: bold !important;
+        margin: 1px 0px !important;
+        border-radius: 4px !important;
     }
     </style>
 """, unsafe_allow_html=True)
 
-st.title("⚛️ KENO ISING MODEL - BÀN PHÍM TỐI ƯU CẢM ỨNG")
-st.markdown("*Bố trí Lưới 5 cột - Nút bấm to, phân vùng màu dễ chọn nhất trên điện thoại.*")
+st.title("⚛️ KENO ISING MODEL - COMPACT MOBILE")
 st.markdown("---")
 
 # ---------------------------------------------------------
@@ -44,6 +55,15 @@ def toggle_number(key_name, num):
 
 def clear_selected(key_name):
     st.session_state[key_name] = []
+
+def parse_text_input(key_name, text):
+    raw_nums = re.findall(r'\b\d{1,2}\b', text)
+    valid = []
+    for n in raw_nums:
+        val = int(n)
+        if 1 <= val <= 80 and val not in valid:
+            valid.append(val)
+    st.session_state[key_name] = sorted(valid[:20])
 
 # ---------------------------------------------------------
 # 1. LÕI THUẬT TOÁN: ISING SPIN GLASS
@@ -98,11 +118,11 @@ def format_numbers(num_list):
     return " - ".join([f"{x:02d}" for x in clean_nums])
 
 # ---------------------------------------------------------
-# 2. GIAO DIỆN LƯỚI 5 CỘT TỐI ƯU THAO TÁC
+# 2. GIAO DIỆN COMPACT PAD (NHỎ GỌN TRONG 1 MÀN HÌNH)
 # ---------------------------------------------------------
-st.header("🎮 Chọn 20 Số Cho 3 Kỳ Vừa Quay")
+st.subheader("🎮 Nhập 20 Số Cho 3 Kỳ")
 
-tab_k1, tab_k2, tab_k3 = st.tabs(["📌 Kỳ 1 (Kỳ xa nhất)", "📌 Kỳ 2 (Kỳ giữa)", "📌 Kỳ 3 (Kỳ mới nhất)"])
+tab_k1, tab_k2, tab_k3 = st.tabs(["📌 Kỳ 1", "📌 Kỳ 2", "📌 Kỳ 3"])
 tabs = [tab_k1, tab_k2, tab_k3]
 
 for idx, tab in enumerate(tabs):
@@ -112,38 +132,36 @@ for idx, tab in enumerate(tabs):
     with tab:
         curr_selected = st.session_state[key_name]
         
-        # Thanh trạng thái tiến độ
-        col_info, col_btn = st.columns([3, 1])
-        with col_info:
-            st.subheader(f"Đã chọn: {len(curr_selected)}/20 số")
-            if curr_selected:
-                st.info(f"👉 `{format_numbers(curr_selected)}`")
-        with col_btn:
-            if st.button(f"🗑️ Xóa Kỳ {k_num}", key=f"btn_clear_{k_num}", use_container_width=True):
+        # Ô Dán Nhanh Text / Hiển thị số đã chọn
+        col_txt, col_clr = st.columns([4, 1])
+        with col_txt:
+            raw_text = st.text_input(
+                f"Kỳ {k_num} ({len(curr_selected)}/20 số):",
+                value=" ".join([f"{x:02d}" for x in sorted(curr_selected)]),
+                key=f"txt_k{k_num}",
+                placeholder="Dán hoặc gõ chuỗi số vào đây..."
+            )
+            # Tự đồng bộ nếu người dùng dán text
+            parsed = [int(x) for x in re.findall(r'\b\d{1,2}\b', raw_text) if 1 <= int(x) <= 80]
+            if sorted(parsed[:20]) != sorted(curr_selected):
+                st.session_state[key_name] = sorted(list(set(parsed[:20])))
+                st.rerun()
+
+        with col_clr:
+            st.write("") # Căn dòng
+            if st.button(f"🗑️ Xóa", key=f"btn_clear_{k_num}", use_container_width=True):
                 clear_selected(key_name)
                 st.rerun()
 
-        st.markdown("---")
-        
-        # TẠO LƯỚI 5 CỘT (Mỗi hàng 5 nút - Phù hợp ngón tay bấm trên điện thoại)
-        cols_per_row = 5
-        total_numbers = 80
-        
-        for row in range(total_numbers // cols_per_row):
-            # Cứ sau 4 hàng (20 số) sẽ chèn tiêu đề nhóm hàng chục để dễ nhìn
-            start_num = row * cols_per_row + 1
-            if (start_num - 1) % 20 == 0:
-                group_start = start_num
-                group_end = start_num + 19
-                st.caption(f"🔻 **Vùng số {group_start:02d} đến {group_end:02d}**")
-
+        # MA TRẬN 10 CỘT X 8 HÀNG - ÉP SIÊU GỌN
+        cols_per_row = 10
+        for row in range(8):
             cols = st.columns(cols_per_row)
             for col in range(cols_per_row):
                 num = row * cols_per_row + col + 1
                 is_selected = num in curr_selected
                 
-                # Nhãn hiển thị trực quan
-                btn_label = f"✅ {num:02d}" if is_selected else f"{num:02d}"
+                btn_label = f"✓{num:02d}" if is_selected else f"{num:02d}"
                 btn_type = "primary" if is_selected else "secondary"
                 
                 if cols[col].button(btn_label, key=f"btn_k{k_num}_{num}", type=btn_type, use_container_width=True):
@@ -157,7 +175,7 @@ draws_data = [st.session_state['selected_k1'], st.session_state['selected_k2'], 
 
 if all(len(d) == 20 for d in draws_data):
     st.markdown("---")
-    st.success("✅ Đã chọn đủ 20/20 số cho 3 kỳ! Đang tính toán ma trận Ising...")
+    st.success("✅ Đã đủ 20/20 số cho 3 kỳ! Đang tính toán...")
 
     model = KenoIsingDynamics(draws_data)
     delta_E, h_field, J_matrix = model.compute_attractor_energies()
@@ -166,37 +184,32 @@ if all(len(d) == 20 for d in draws_data):
     sorted_indices = np.argsort(delta_E)
     top_attractors = [int(idx + 1) for idx in sorted_indices]
 
-    # Hiển thị chỉ số
-    st.header("🌀 Trạng Thái Hệ Thống & Bộ Số Gợi Ý")
+    st.header("🌀 Trạng Thái Hệ Thống & Dự Đoán")
     
     col_m1, col_m2 = st.columns(2)
-    col_m1.metric("Entropy Shannon Toàn Cục", f"{system_entropy:.4f} bits")
+    col_m1.metric("Entropy Shannon", f"{system_entropy:.4f} bits")
     col_m2.metric("Năng Lượng Cực Tiểu (E_min)", f"{float(delta_E[sorted_indices[0]]):.3f}")
 
-    # Gợi ý Bậc 3 - 5 - 6
     st.markdown("---")
-    st.header("🎯 BỘ SỐ GỢI Ý ĐỌC TỪ ĐIỂM HÚT (ATTRACTOR SETS)")
+    st.header("🎯 BỘ SỐ GỢI Ý (ATTRACTOR SETS)")
     
-    tab3, tab5, tab6 = st.tabs(["🔥 Gợi Ý Bậc 3", "⚡ Gợi Ý Bậc 5", "💎 Gợi Ý Bậc 6"])
+    tab3, tab5, tab6 = st.tabs(["🔥 Bậc 3", "⚡ Bậc 5", "💎 Bậc 6"])
 
     with tab3:
-        st.subheader("📌 Bộ Số Bậc 3")
         c1, c2, c3 = st.columns(3)
-        c1.metric("Bậc 3 - Điểm hút 1", format_numbers(top_attractors[:3]))
-        c2.metric("Bậc 3 - Điểm hút 2", format_numbers(top_attractors[3:6]))
-        c3.metric("Bậc 3 - Cân bằng", format_numbers([top_attractors[0], top_attractors[1], top_attractors[6]]))
+        c1.metric("Bậc 3 - ĐH 1", format_numbers(top_attractors[:3]))
+        c2.metric("Bậc 3 - ĐH 2", format_numbers(top_attractors[3:6]))
+        c3.metric("Bậc 3 - CB", format_numbers([top_attractors[0], top_attractors[1], top_attractors[6]]))
 
     with tab5:
-        st.subheader("📌 Bộ Số Bậc 5")
         c1, c2 = st.columns(2)
-        c1.metric("Bậc 5 - Cấu hình Năng lượng thấp nhất", format_numbers(top_attractors[:5]))
-        c2.metric("Bậc 5 - Cấu hình Mở rộng", format_numbers(top_attractors[2:7]))
+        c1.metric("Bậc 5 - Chuẩn", format_numbers(top_attractors[:5]))
+        c2.metric("Bậc 5 - Mở rộng", format_numbers(top_attractors[2:7]))
 
     with tab6:
-        st.subheader("📌 Bộ Số Bậc 6")
         c1, c2 = st.columns(2)
-        c1.metric("Bậc 6 - Điểm hút Chính", format_numbers(top_attractors[:6]))
-        c2.metric("Bậc 6 - Điểm hút Phụ", format_numbers(top_attractors[1:7]))
+        c1.metric("Bậc 6 - Chính", format_numbers(top_attractors[:6]))
+        c2.metric("Bậc 6 - Phụ", format_numbers(top_attractors[1:7]))
 
 else:
-    st.info("👈 Vui lòng bấm chọn ĐỦ 20 SỐ cho cả 3 kỳ ở trên để hiển thị dự đoán Bậc 3, 5, 6.")
+    st.info("👈 Bấm chọn hoặc dán đủ 20 số cho cả 3 kỳ để xem gợi ý Bậc 3, 5, 6.")
