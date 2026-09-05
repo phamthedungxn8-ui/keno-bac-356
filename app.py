@@ -2,6 +2,7 @@ import streamlit as st
 import numpy as np
 import pandas as pd
 import itertools
+import re
 
 # ---------------------------------------------------------
 # CẤU HÌNH GIAO DIỆN STREAMLIT
@@ -15,6 +16,63 @@ st.set_page_config(
 st.title("⚛️ KENO ISING MODEL - NGUYÊN TẮC DỮ LIỆU THỰC")
 st.caption("1️⃣ Real Historical Baseline (J) | 2️⃣ Impulse Perturbation (h) | 3️⃣ Combinatorial Energy Solver")
 st.markdown("---")
+
+# ---------------------------------------------------------
+# HÀM XỬ LÝ DỮ LIỆU THÔNG MINH (TỰ ĐỘNG TÁCH SỐ DÍNH LIỀN)
+# ---------------------------------------------------------
+def extract_numbers_from_text(text):
+    """
+    Tự động trích xuất các số từ 1 đến 80:
+    - Hỗ trợ chuỗi dính liền từ minhchinh.com (VD: 06070911 -> 06, 07, 09, 11)
+    - Hỗ trợ văn bản có khoảng trắng, dấu phẩy, dấu gạch ngang
+    """
+    if not text:
+        return []
+    
+    # 1. Nếu có khoảng trắng hoặc ký tự phân cách, tách theo phân cách trước
+    tokens = re.split(r'[\s,\t\n\-]+', text.strip())
+    
+    extracted_nums = []
+    for token in tokens:
+        clean_token = re.sub(r'\D', '', token) # Chỉ giữ lại chữ số
+        if not clean_token:
+            continue
+            
+        # Nếu đoạn chữ số dài > 2 (VD: dính liền kiểu 06070911...), cứ 2 chữ số cắt 1 lần
+        if len(clean_token) > 2 and len(clean_token) % 2 == 0:
+            for i in range(0, len(clean_token), 2):
+                num = int(clean_token[i:i+2])
+                if 1 <= num <= 80:
+                    extracted_nums.append(num)
+        else:
+            num = int(clean_token)
+            if 1 <= num <= 80:
+                extracted_nums.append(num)
+                
+    return extracted_nums
+
+def parse_multi_line_input(text):
+    """Xử lý nhập nhiều kỳ cho Tầng 1"""
+    lines = text.strip().split('\n')
+    draws = []
+    for line in lines:
+        nums = extract_numbers_from_text(line)
+        # Loại bỏ trùng lặp trong cùng 1 kỳ nhưng vẫn giữ thứ tự / sắp xếp
+        unique_nums = sorted(list(dict.fromkeys(nums)))
+        if len(unique_nums) == 20:
+            draws.append(unique_nums)
+    return draws
+
+def parse_input_string(text):
+    """Xử lý nhập 1 kỳ (20 số) cho Tầng 2"""
+    nums = extract_numbers_from_text(text)
+    unique_nums = sorted(list(dict.fromkeys(nums)))
+    return unique_nums[:20]
+
+def format_numbers(num_list):
+    if not num_list:
+        return ""
+    return " - ".join([f"{x:02d}" for x in num_list])
 
 # ---------------------------------------------------------
 # KHUNG KIẾN TRÚC 3 TẦNG ĐỘC LẬP
@@ -99,28 +157,6 @@ class ConfigurationEnergySolver:
         return sorted(list(best_combo)), min_energy, sorted(list(top_candidates))
 
 # ---------------------------------------------------------
-# TIỆN ÍCH LỌC DỮ LIỆU
-# ---------------------------------------------------------
-def parse_multi_line_input(text):
-    lines = text.strip().split('\n')
-    draws = []
-    for line in lines:
-        nums = [int(x) for x in line.split() if x.isdigit() and 1 <= int(x) <= 80]
-        valid_nums = sorted(list(set(nums)))
-        if len(valid_nums) == 20:
-            draws.append(valid_nums)
-    return draws
-
-def parse_input_string(text):
-    nums = [int(x) for x in text.split() if x.isdigit() and 1 <= int(x) <= 80]
-    return sorted(list(set(nums)))[:20]
-
-def format_numbers(num_list):
-    if not num_list:
-        return ""
-    return " - ".join([f"{x:02d}" for x in num_list])
-
-# ---------------------------------------------------------
 # GIAO DIỆN ĐIỀU KHIỂN
 # ---------------------------------------------------------
 
@@ -136,8 +172,8 @@ history_data = []
 
 with tab_manual:
     manual_text = st.text_area(
-        "Dán chuỗi kết quả lịch sử (Mỗi dòng là 1 kỳ gồm 20 số):",
-        placeholder="01 02 03 04 05 06 07 08 09 10 11 12 13 14 15 16 17 18 19 20\n21 22 ...",
+        "Dán chuỗi kết quả lịch sử (Hỗ trợ copy dính liền từ minhchinh.com):",
+        placeholder="Dán chuỗi 06070911121719... hoặc dạng có khoảng trắng",
         height=150
     )
     if manual_text.strip():
@@ -151,9 +187,9 @@ with tab_file:
 
 # Kiểm duyệt dữ liệu Tầng 1
 if len(history_data) >= 10:
-    st.success(f"✅ TẦNG 1 HỢP LỆ: Đã nạp thành công **{len(history_data)} kỳ** lịch sử thực tế.")
+    st.success(f"✅ TẦNG 1 HỢP LỆ: Đã nhận diện thành công **{len(history_data)} kỳ** đủ 20 số.")
 else:
-    st.error(f"❌ TẦNG 1 CHƯA ĐỦ DỮ LIỆU: Hiện có **{len(history_data)} kỳ**. Cần tối thiểu **10 kỳ** thực tế để tính ma trận J_ij.")
+    st.error(f"❌ TẦNG 1 CHƯA ĐỦ DỮ LIỆU: Đã nhận diện **{len(history_data)} kỳ** chuẩn. Cần tối thiểu **10 kỳ** (mỗi kỳ đủ 20 số).")
 
 st.markdown("---")
 
@@ -164,28 +200,33 @@ st.header("2️⃣ TẦNG 2: Nhập 3 Kỳ Quay Kích Thích (Trường Ngoài h
 
 col1, col2, col3 = st.columns(3)
 with col1:
-    k1_text = st.text_area("Kỳ 1 (20 số):", "", height=80, placeholder="Nhập 20 số...")
+    k1_text = st.text_area("Kỳ 1 (Dán dính liền hoặc khoảng trắng):", "", height=100)
+    d1 = parse_input_string(k1_text)
+    if len(d1) == 20:
+        st.caption(f"✓ Đã tách: `{format_numbers(d1)}`")
 with col2:
-    k2_text = st.text_area("Kỳ 2 (20 số):", "", height=80, placeholder="Nhập 20 số...")
+    k2_text = st.text_area("Kỳ 2 (Dán dính liền hoặc khoảng trắng):", "", height=100)
+    d2 = parse_input_string(k2_text)
+    if len(d2) == 20:
+        st.caption(f"✓ Đã tách: `{format_numbers(d2)}`")
 with col3:
-    k3_text = st.text_area("Kỳ 3 (20 số):", "", height=80, placeholder="Nhập 20 số...")
-
-d1, d2, d3 = parse_input_string(k1_text), parse_input_string(k2_text), parse_input_string(k3_text)
+    k3_text = st.text_area("Kỳ 3 (Dán dính liền hoặc khoảng trắng):", "", height=100)
+    d3 = parse_input_string(k3_text)
+    if len(d3) == 20:
+        st.caption(f"✓ Đã tách: `{format_numbers(d3)}`")
 
 st.markdown("---")
 
 # =========================================================
 # 3️⃣ TẦNG 3: TỐI ƯU NĂNG LƯỢNG CẤU HÌNH (E_min)
 # =========================================================
-st.header("3️⃣ TẦNG 3: Kết Quả Dự Đoán Tối Ưu Năng Lượng")
+st.header("3️⃣ TẦNG 3: Kết Quả Dự Đoán Tối Ưu Năng LƯợng")
 
-# KHÓA TẦNG 3 NẾU TẦNG 1 HOẶC TẦNG 2 CHƯA ĐỦ DỮ LIỆU THỰC
 if len(history_data) < 10:
-    st.warning("🔒 Tầng 3 bị khóa: Vui lòng nạp đủ dữ liệu thực ở Tầng 1 trước.")
+    st.warning("🔒 Tầng 3 bị khóa: Vui lòng nạp đủ 10 kỳ ở Tầng 1.")
 elif len(d1) != 20 or len(d2) != 20 or len(d3) != 20:
-    st.warning("🔒 Tầng 3 bị khóa: Vui lòng nhập đủ 20 số cho cả 3 kỳ ở Tầng 2.")
+    st.warning("🔒 Tầng 3 bị khóa: Vui lòng dán đủ 20 số cho từng kỳ ở Tầng 2.")
 else:
-    # Tính toán khi 100% dữ liệu là thực tế
     baseline_engine = HistoricalBaselineEngine(history_data)
     J_matrix = baseline_engine.compute_coupling_matrix()
 
