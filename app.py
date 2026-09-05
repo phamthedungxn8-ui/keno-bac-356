@@ -2,18 +2,20 @@ import streamlit as st
 import numpy as np
 import pandas as pd
 import itertools
+import requests
+from bs4 import BeautifulSoup
 
 # ---------------------------------------------------------
-# CẤU HÌNH GIAO DIỆN
+# CẤU HÌNH GIAO DIỆN STREAMLIT
 # ---------------------------------------------------------
 st.set_page_config(
-    page_title="Keno Ising Model - 3-Tier Architecture",
+    page_title="Keno Ising Model - Strict 3-Tier Architecture",
     page_icon="⚛️",
     layout="wide"
 )
 
-st.title("⚛️ KENO ISING MODEL - KHUNG KIẾN TRÚC 3 TẦNG")
-st.caption("1️⃣ Historical Baseline Matrix (J) | 2️⃣ Impulse Perturbation (h) | 3️⃣ Combinatorial Energy Solver")
+st.title("⚛️ KENO ISING MODEL - NGUYÊN TẮC DỮ LIỆU THỰC")
+st.caption("1️⃣ Real Historical Baseline (J) | 2️⃣ Impulse Perturbation (h) | 3️⃣ Combinatorial Energy Solver")
 st.markdown("---")
 
 # ---------------------------------------------------------
@@ -101,13 +103,15 @@ class ConfigurationEnergySolver:
 # ---------------------------------------------------------
 # TIỆN ÍCH
 # ---------------------------------------------------------
-def generate_synthetic_history(n_draws=50):
-    np.random.seed(42)
-    history = []
-    for _ in range(n_draws):
-        draw = np.random.choice(np.arange(1, 81), size=20, replace=False)
-        history.append(sorted(draw))
-    return history
+def parse_multi_line_input(text):
+    lines = text.strip().split('\n')
+    draws = []
+    for line in lines:
+        nums = [int(x) for x in line.split() if x.isdigit() and 1 <= int(x) <= 80]
+        valid_nums = sorted(list(set(nums)))
+        if len(valid_nums) == 20:
+            draws.append(valid_nums)
+    return draws
 
 def parse_input_string(text):
     nums = [int(x) for x in text.split() if x.isdigit() and 1 <= int(x) <= 80]
@@ -119,57 +123,77 @@ def format_numbers(num_list):
     return " - ".join([f"{x:02d}" for x in num_list])
 
 # ---------------------------------------------------------
-# HIỂN THỊ CHUẨN 3 TẦNG RÕ RÀNG TRÊN MÀN HÌNH CHÍNH
+# GIAO DIỆN ĐIỀU KHIỂN
 # ---------------------------------------------------------
 
 # =========================================================
-# 1️⃣ TẦNG 1: DỮ LIỆU NỀN LỊCH SỬ (HISTORICAL BASELINE)
+# 1️⃣ TẦNG 1: DỮ LIỆU NỀN LỊCH SỬ THỰC TẾ
 # =========================================================
-st.header("1️⃣ TẦNG 1: Dữ Liệu Nền Lịch Sử (Ma Trận Tương Tác J_ij)")
-st.caption("Thiết lập ma trận liên kết tĩnh giữa 80 con số dựa trên chuỗi thời gian dài hạn.")
+st.header("1️⃣ TẦNG 1: Nạp Dữ Liệu Nền Lịch Sử Thực (Bắt Buộc)")
+st.caption("Ma trận J_ij chỉ được phép tính khi có dữ liệu lịch sử thực tế (Tối thiểu 10 kỳ).")
 
-col_h1, col_h2 = st.columns([2, 1])
-with col_h1:
-    history_length = st.slider("Số kỳ lịch sử dùng để đo độ liên kết J_ij:", min_value=30, max_value=100, value=50, step=10)
-with col_h2:
-    st.info(f"📊 Trạng thái Tầng 1: Đã sẵn sàng **{history_length} kỳ** làm nền.")
+tab_manual, tab_file = st.tabs(["📝 Nhập Văn Bản Lịch Sử", "📁 Tải File CSV Lịch Sử"])
+
+history_data = []
+
+with tab_manual:
+    manual_text = st.text_area(
+        "Dán chuỗi kết quả lịch sử (Mỗi dòng là 1 kỳ gồm 20 số):",
+        placeholder="01 02 03 04 05 06 07 08 09 10 11 12 13 14 15 16 17 18 19 20\n21 22 ...",
+        height=150
+    )
+    if manual_text.strip():
+        history_data = parse_multi_line_input(manual_text)
+
+with tab_file:
+    uploaded_file = st.file_uploader("Tải file CSV/TXT chứa lịch sử các kỳ", type=["csv", "txt"])
+    if uploaded_file is not None:
+        content = uploaded_file.read().decode("utf-8")
+        history_data = parse_multi_line_input(content)
+
+# Hiển thị trạng thái kiểm duyệt Tầng 1
+if len(history_data) >= 10:
+    st.success(f"✅ TẦNG 1 HỢP LỆ: Đã nạp thành công **{len(history_data)} kỳ** lịch sử thực tế.")
+else:
+    st.error(f"❌ TẦNG 1 CHƯA ĐỦ DỮ LIỆU: Hiện có **{len(history_data)} kỳ**. Cần tối thiểu **10 kỳ** thực tế để tính ma trận J_ij.")
 
 st.markdown("---")
 
 # =========================================================
-# 2️⃣ TẦNG 2: KÍCH THÍCH TỨC THỜI (IMPULSE PERTURBATION)
+# 2️⃣ TẦNG 2: KÍCH THÍCH TỨC THỜI
 # =========================================================
 st.header("2️⃣ TẦNG 2: Nhập 3 Kỳ Quay Kích Thích (Trường Ngoài h_i)")
-st.caption("3 kỳ gần nhất làm xung động làm lệch mặt bằng năng lượng hệ thống.")
 
 col1, col2, col3 = st.columns(3)
 with col1:
-    k1_text = st.text_area("Kỳ 1 (20 số):", "01 03 05 08 12 15 19 22 25 30 33 41 45 50 55 60 62 70 73 80", height=80)
+    k1_text = st.text_area("Kỳ 1 (20 số):", "", height=80, placeholder="Nhập 20 số...")
 with col2:
-    k2_text = st.text_area("Kỳ 2 (20 số):", "02 03 07 10 12 18 22 28 30 35 40 45 51 55 61 68 70 74 77 80", height=80)
+    k2_text = st.text_area("Kỳ 2 (20 số):", "", height=80, placeholder="Nhập 20 số...")
 with col3:
-    k3_text = st.text_area("Kỳ 3 (20 số):", "01 04 05 11 15 20 25 31 33 42 45 50 56 60 63 70 72 75 78 79", height=80)
+    k3_text = st.text_area("Kỳ 3 (20 số):", "", height=80, placeholder="Nhập 20 số...")
 
 d1, d2, d3 = parse_input_string(k1_text), parse_input_string(k2_text), parse_input_string(k3_text)
 
 st.markdown("---")
 
 # =========================================================
-# 3️⃣ TẦNG 3: TỐI ƯU NĂNG LƯỢNG CẤU HÌNH (COMBINATORIAL SOLVER)
+# 3️⃣ TẦNG 3: TỐI ƯU NĂNG LƯỢNG CẤU HÌNH (E_min)
 # =========================================================
-st.header("3️⃣ TẦNG 3: Tối Ưu Năng Lượng Cấu Hình Tổ Hợp (E_min)")
+st.header("3️⃣ TẦNG 3: Kết Quả Dự Đoán Tối Ưu Năng Lượng")
 
-if len(d1) == 20 and len(d2) == 20 and len(d3) == 20:
-    # Chạy Tầng 1
-    history_data = generate_synthetic_history(n_draws=history_length)
+# KHÓA TẦNG 3 NẾU TẦNG 1 HOẶC TẦNG 2 CHƯA ĐỦ DỮ LIỆU THỰC
+if len(history_data) < 10:
+    st.warning("🔒 Tầng 3 bị khóa: Vui lòng nạp đủ dữ liệu thực ở Tầng 1 trước.")
+elif len(d1) != 20 or len(d2) != 20 or len(d3) != 20:
+    st.warning("🔒 Tầng 3 bị khóa: Vui lòng nhập đủ 20 số cho cả 3 kỳ ở Tầng 2.")
+else:
+    # Chỉ tính toán khi 100% dữ liệu là thực tế
     baseline_engine = HistoricalBaselineEngine(history_data)
     J_matrix = baseline_engine.compute_coupling_matrix()
 
-    # Chạy Tầng 2
     impulse_engine = ImpulseFieldEngine([d1, d2, d3])
     h_field = impulse_engine.compute_external_field()
 
-    # Chạy Tầng 3
     solver = ConfigurationEnergySolver(J_matrix, h_field, alpha=1.5)
 
     b3, e3, pool = solver.find_optimal_configuration(k_size=3)
@@ -182,5 +206,3 @@ if len(d1) == 20 and len(d2) == 20 and len(d3) == 20:
     m3.metric("💎 Bậc 6 Tối Ưu", format_numbers(b6), f"Energy: {e6:.4f}")
 
     st.write(f"• **Ứng viên điểm hút (Pool 18):** `{format_numbers(pool)}`")
-else:
-    st.error("⚠️ Vui lòng kiểm tra lại 3 kỳ quay ở Tầng 2 để đảm bảo đủ 20 số/kỳ.")
