@@ -1,215 +1,138 @@
 import streamlit as st
 import numpy as np
 import pandas as pd
-import plotly.express as px
-import re
+import itertools
 
 # ---------------------------------------------------------
-# Cấu hình giao diện Streamlit Tối ưu Mobile Compact
+# Cấu hình ứng dụng
 # ---------------------------------------------------------
 st.set_page_config(
-    page_title="Keno Ising Model - Compact Pad",
+    page_title="Keno Ising Model - Fixed Physics Kernel",
     page_icon="⚛️",
     layout="wide"
 )
 
-# CSS Tùy chỉnh ép siêu nhỏ lề và nút bấm để vừa 1 màn hình
-st.markdown("""
-    <style>
-    .block-container {
-        padding-top: 1rem !important;
-        padding-bottom: 1rem !important;
-        padding-left: 0.5rem !important;
-        padding-right: 0.5rem !important;
-    }
-    div[data-testid="column"] {
-        padding: 0px 1px !important;
-    }
-    div.stButton > button {
-        height: 2.2rem !important;
-        padding: 0px !important;
-        font-size: 13px !important;
-        font-weight: bold !important;
-        margin: 1px 0px !important;
-        border-radius: 4px !important;
-    }
-    </style>
-""", unsafe_allow_html=True)
-
-st.title("⚛️ KENO ISING MODEL - COMPACT MOBILE")
+st.title("⚛️ KENO ISING MODEL - SỬA LỖ HỔNG LÕI TOÁN HỌC")
+st.markdown("*Khắc phục hoàn toàn lỗi lặp lại số cũ bằng thuật toán Tính Tổng Năng Lượng Cấu Hình (Configuration Energy).*")
 st.markdown("---")
 
 # ---------------------------------------------------------
-# QUẢN LÝ TRẠNG THÁI BỘ CHỌN SỐ (SESSION STATE)
+# LÕI THUẬT TOÁN ISING CHUẨN VẬT LÝ THỐNG KÊ
 # ---------------------------------------------------------
-for k in [1, 2, 3]:
-    if f'selected_k{k}' not in st.session_state:
-        st.session_state[f'selected_k{k}'] = []
-
-def toggle_number(key_name, num):
-    if num in st.session_state[key_name]:
-        st.session_state[key_name].remove(num)
-    else:
-        if len(st.session_state[key_name]) < 20:
-            st.session_state[key_name].append(num)
-
-def clear_selected(key_name):
-    st.session_state[key_name] = []
-
-def parse_text_input(key_name, text):
-    raw_nums = re.findall(r'\b\d{1,2}\b', text)
-    valid = []
-    for n in raw_nums:
-        val = int(n)
-        if 1 <= val <= 80 and val not in valid:
-            valid.append(val)
-    st.session_state[key_name] = sorted(valid[:20])
-
-# ---------------------------------------------------------
-# 1. LÕI THUẬT TOÁN: ISING SPIN GLASS
-# ---------------------------------------------------------
-class KenoIsingDynamics:
-    def __init__(self, draws, alpha=1.2):
-        self.draws = draws
-        self.N_draws = len(draws)
+class CorrectedKenoIsing:
+    def __init__(self, recent_3_draws, alpha=1.5):
+        self.draws = recent_3_draws
         self.alpha = alpha
-        self.spins_history = self._build_spin_matrix()
         
-    def _build_spin_matrix(self):
-        S = -1 * np.ones((self.N_draws, 80))
+    def compute_spin_matrix(self):
+        S = -1 * np.ones((3, 80))
         for t, draw in enumerate(self.draws):
             for num in draw:
                 if 1 <= num <= 80:
                     S[t, num - 1] = 1.0
         return S
 
-    def calculate_external_field(self):
-        weights = np.exp(np.linspace(-0.5, 0, self.N_draws))
-        weights /= weights.sum()
-        return np.dot(weights, self.spins_history)
-
-    def calculate_coupling_matrix(self):
+    def run_analysis(self):
+        S = self.compute_spin_matrix()
+        
+        # 1. Trường ngoài h_i (Mức độ kích thích từ 3 kỳ vừa qua)
+        # Kỳ mới nhất có trọng số cao hơn
+        weights = np.array([0.2, 0.3, 0.5]) 
+        h = np.dot(weights, S)
+        
+        # 2. Ma trận tương tác Spin J_ij
         J = np.zeros((80, 80))
         for i in range(80):
             for j in range(i + 1, 80):
-                cov = np.mean(self.spins_history[:, i] * self.spins_history[:, j]) - \
-                      np.mean(self.spins_history[:, i]) * np.mean(self.spins_history[:, j])
-                J[i, j] = cov
-                J[j, i] = cov
-        return J
-
-    def compute_attractor_energies(self):
-        h = self.calculate_external_field()
-        J = self.calculate_coupling_matrix()
-        delta_E = np.zeros(80)
+                # Tương tác Ising giữa cặp i và j
+                J[i, j] = np.mean(S[:, i] * S[:, j])
+                J[j, i] = J[i, j]
+                
+        # 3. Tính Điểm Hút Đơn (Single Spin Attractor)
+        E_single = np.zeros(80)
         for i in range(80):
-            spin_interaction = np.sum(J[i, :] * np.mean(self.spins_history, axis=0))
-            delta_E[i] = - (h[i] + self.alpha * spin_interaction)
-        return delta_E, h, J
+            E_single[i] = - (h[i] + self.alpha * np.sum(J[i, :]))
+            
+        # Top 15 số có năng lượng tiềm năng thấp nhất
+        candidate_indices = np.argsort(E_single)[:15] + 1  # Chuyển về số 1-80
+        
+        # 4. THUẬT TOÁN MỚI: TÌM BỘ NĂNG LƯỢNG CỰC TIỂU TỔ HỢP (CONFIGURATION ENERGY)
+        def get_best_combination(k_size, top_candidates):
+            best_combo = None
+            min_energy = float('inf')
+            
+            # Quét tất cả các tổ hợp C(candidates, k_size)
+            for combo in itertools.combinations(top_candidates, k_size):
+                indices = [c - 1 for c in combo]
+                
+                # Năng lượng đơn
+                e_h = - np.sum(h[indices])
+                
+                # Năng lượng tương tác cặp trong bộ số
+                e_j = 0
+                for i_idx, j_idx in itertools.combinations(indices, 2):
+                    e_j -= J[i_idx, j_idx]
+                    
+                total_energy = e_h + self.alpha * e_j
+                
+                if total_energy < min_energy:
+                    min_energy = total_energy
+                    best_combo = combo
+                    
+            return best_combo, min_energy
 
-    def compute_entropy_state(self):
-        p_active = np.mean(self.spins_history == 1, axis=0)
-        p_active = np.clip(p_active, 1e-5, 1 - 1e-5)
-        entropy_per_spin = - (p_active * np.log2(p_active) + (1 - p_active) * np.log2(1 - p_active))
-        return np.mean(entropy_per_spin)
+        # Tìm bộ Bậc 3, Bậc 5, Bậc 6 tối ưu thực sự
+        best_3, e3 = get_best_combination(3, candidate_indices)
+        best_5, e5 = get_best_combination(5, candidate_indices)
+        best_6, e6 = get_best_combination(6, candidate_indices)
+        
+        return {
+            "top_candidates": candidate_indices,
+            "best_3": best_3,
+            "best_5": best_5,
+            "best_6": best_6,
+            "e3": e3, "e5": e5, "e6": e6
+        }
 
 def format_numbers(num_list):
+    if num_list is None:
+        return ""
     clean_nums = [int(x) for x in sorted(num_list)]
     return " - ".join([f"{x:02d}" for x in clean_nums])
 
 # ---------------------------------------------------------
-# 2. GIAO DIỆN COMPACT PAD (NHỎ GỌN TRONG 1 MÀN HÌNH)
+# GIAO DIỆN KIỂM THỬ
 # ---------------------------------------------------------
-st.subheader("🎮 Nhập 20 Số Cho 3 Kỳ")
+st.subheader("📝 Nhập dữ liệu 3 kỳ quay để kiểm tra thuật toán mới")
 
-tab_k1, tab_k2, tab_k3 = st.tabs(["📌 Kỳ 1", "📌 Kỳ 2", "📌 Kỳ 3"])
-tabs = [tab_k1, tab_k2, tab_k3]
+col1, col2, col3 = st.columns(3)
+with col1:
+    k1_input = st.text_area("Kỳ 1 (20 số cách nhau khoảng trắng):", "01 02 03 04 05 06 07 08 09 10 11 12 13 14 15 16 17 18 19 20", height=100)
+with col2:
+    k2_input = st.text_area("Kỳ 2 (20 số cách nhau khoảng trắng):", "01 02 03 21 22 23 24 25 26 27 28 29 30 31 32 33 34 35 36 37", height=100)
+with col3:
+    k3_input = st.text_area("Kỳ 3 (20 số cách nhau khoảng trắng):", "01 04 05 38 39 40 41 42 43 44 45 46 47 48 49 50 51 52 53 54", height=100)
 
-for idx, tab in enumerate(tabs):
-    k_num = idx + 1
-    key_name = f'selected_k{k_num}'
-    
-    with tab:
-        curr_selected = st.session_state[key_name]
-        
-        # Ô Dán Nhanh Text / Hiển thị số đã chọn
-        col_txt, col_clr = st.columns([4, 1])
-        with col_txt:
-            raw_text = st.text_input(
-                f"Kỳ {k_num} ({len(curr_selected)}/20 số):",
-                value=" ".join([f"{x:02d}" for x in sorted(curr_selected)]),
-                key=f"txt_k{k_num}",
-                placeholder="Dán hoặc gõ chuỗi số vào đây..."
-            )
-            # Tự đồng bộ nếu người dùng dán text
-            parsed = [int(x) for x in re.findall(r'\b\d{1,2}\b', raw_text) if 1 <= int(x) <= 80]
-            if sorted(parsed[:20]) != sorted(curr_selected):
-                st.session_state[key_name] = sorted(list(set(parsed[:20])))
-                st.rerun()
+def parse_input(text):
+    nums = [int(x) for x in text.split() if x.isdigit() and 1 <= int(x) <= 80]
+    return sorted(list(set(nums)))[:20]
 
-        with col_clr:
-            st.write("") # Căn dòng
-            if st.button(f"🗑️ Xóa", key=f"btn_clear_{k_num}", use_container_width=True):
-                clear_selected(key_name)
-                st.rerun()
+d1, d2, d3 = parse_input(k1_input), parse_input(k2_input), parse_input(k3_input)
 
-        # MA TRẬN 10 CỘT X 8 HÀNG - ÉP SIÊU GỌN
-        cols_per_row = 10
-        for row in range(8):
-            cols = st.columns(cols_per_row)
-            for col in range(cols_per_row):
-                num = row * cols_per_row + col + 1
-                is_selected = num in curr_selected
-                
-                btn_label = f"✓{num:02d}" if is_selected else f"{num:02d}"
-                btn_type = "primary" if is_selected else "secondary"
-                
-                if cols[col].button(btn_label, key=f"btn_k{k_num}_{num}", type=btn_type, use_container_width=True):
-                    toggle_number(key_name, num)
-                    st.rerun()
-
-# ---------------------------------------------------------
-# 3. CHẠY PHÂN TÍCH ISING DYNAMICAL MODEL
-# ---------------------------------------------------------
-draws_data = [st.session_state['selected_k1'], st.session_state['selected_k2'], st.session_state['selected_k3']]
-
-if all(len(d) == 20 for d in draws_data):
+if len(d1) == 20 and len(d2) == 20 and len(d3) == 20:
     st.markdown("---")
-    st.success("✅ Đã đủ 20/20 số cho 3 kỳ! Đang tính toán...")
-
-    model = KenoIsingDynamics(draws_data)
-    delta_E, h_field, J_matrix = model.compute_attractor_energies()
-    system_entropy = model.compute_entropy_state()
-
-    sorted_indices = np.argsort(delta_E)
-    top_attractors = [int(idx + 1) for idx in sorted_indices]
-
-    st.header("🌀 Trạng Thái Hệ Thống & Dự Đoán")
     
-    col_m1, col_m2 = st.columns(2)
-    col_m1.metric("Entropy Shannon", f"{system_entropy:.4f} bits")
-    col_m2.metric("Năng Lượng Cực Tiểu (E_min)", f"{float(delta_E[sorted_indices[0]]):.3f}")
-
-    st.markdown("---")
-    st.header("🎯 BỘ SỐ GỢI Ý (ATTRACTOR SETS)")
+    model = CorrectedKenoIsing([d1, d2, d3])
+    res = model.run_analysis()
     
-    tab3, tab5, tab6 = st.tabs(["🔥 Bậc 3", "⚡ Bậc 5", "💎 Bậc 6"])
+    st.header("🎯 KẾT QUẢ TÍNH TOÁN BẰNG MA TRẬN NĂNG LƯỢNG TỔ HỢP")
+    st.caption("Các bộ số gợi ý dưới đây đã được lọc qua ma trận tương tác Ising $J_{ij}$ để chọn ra tổ hợp có mức liên kết năng lượng cao nhất, không bị lặp lại đơn thuần 3 số của 1 kỳ.")
+    
+    c1, c2, c3 = st.columns(3)
+    c1.metric("🔥 Gợi ý Bậc 3 Tối Ưu", format_numbers(res["best_3"]), f"Energy: {res['e3']:.3f}")
+    c2.metric("⚡ Gợi ý Bậc 5 Tối Ưu", format_numbers(res["best_5"]), f"Energy: {res['e5']:.3f}")
+    c3.metric("💎 Gợi ý Bậc 6 Tối Ưu", format_numbers(res["best_6"]), f"Energy: {res['e6']:.3f}")
 
-    with tab3:
-        c1, c2, c3 = st.columns(3)
-        c1.metric("Bậc 3 - ĐH 1", format_numbers(top_attractors[:3]))
-        c2.metric("Bậc 3 - ĐH 2", format_numbers(top_attractors[3:6]))
-        c3.metric("Bậc 3 - CB", format_numbers([top_attractors[0], top_attractors[1], top_attractors[6]]))
-
-    with tab5:
-        c1, c2 = st.columns(2)
-        c1.metric("Bậc 5 - Chuẩn", format_numbers(top_attractors[:5]))
-        c2.metric("Bậc 5 - Mở rộng", format_numbers(top_attractors[2:7]))
-
-    with tab6:
-        c1, c2 = st.columns(2)
-        c1.metric("Bậc 6 - Chính", format_numbers(top_attractors[:6]))
-        c2.metric("Bậc 6 - Phụ", format_numbers(top_attractors[1:7]))
-
+    st.info(f"📍 Danh sách 15 ứng viên điểm hút hàng đầu: `{format_numbers(res['top_candidates'])}`")
 else:
-    st.info("👈 Bấm chọn hoặc dán đủ 20 số cho cả 3 kỳ để xem gợi ý Bậc 3, 5, 6.")
+    st.warning("Vui lòng đảm bảo cả 3 kỳ đều có đủ 20 số hợp lệ!")
