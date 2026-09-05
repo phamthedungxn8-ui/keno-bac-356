@@ -28,22 +28,27 @@ def extract_numbers_from_image(image_file):
         file_bytes = np.asarray(bytearray(image_file.read()), dtype=np.uint8)
         img = cv2.imdecode(file_bytes, cv2.IMREAD_COLOR)
         
-        # Chuyển ảnh sang mức xám
-        gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+        h, w, _ = img.shape
         
-        # Phân ngưỡng Otsu tách chữ đen rõ nét trên nền trắng/vàng
+        # CẮT BỎ VÙNG RÁC (Chỉ lấy khu vực trung tâm chứa 20 quả bóng)
+        # Loại bỏ 25% phía trên (Thanh giờ, Mã kỳ, Dòng "Tìm thấy 6 kết quả...")
+        # Loại bỏ 20% bên phải (Bảng thống kê Chẵn 12 / Lớn 12)
+        crop_img = img[int(h * 0.25):int(h * 0.85), 0:int(w * 0.80)]
+        
+        gray = cv2.cvtColor(crop_img, cv2.COLOR_BGR2GRAY)
+        
+        # Tăng tương phản cho chữ trong bóng
         thresh = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY | cv2.THRESH_OTSU)[1]
         
-        # Cấu hình OCR Tesseract
         custom_config = r'--oem 3 --psm 6 -c tessedit_char_whitelist=0123456789'
         text = pytesseract.image_to_string(thresh, config=custom_config)
         
-        # Lọc các số nguyên từ 1 đến 80
         raw_numbers = re.findall(r'\b\d{1,2}\b', text)
         
         valid_numbers = []
         for n in raw_numbers:
             num = int(n)
+            # Chỉ nhận diện số hợp lệ Keno từ 1-80
             if 1 <= num <= 80 and num not in valid_numbers:
                 valid_numbers.append(num)
                 
