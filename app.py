@@ -2,8 +2,6 @@ import streamlit as st
 import numpy as np
 import pandas as pd
 import itertools
-import requests
-from bs4 import BeautifulSoup
 
 # ---------------------------------------------------------
 # CẤU HÌNH GIAO DIỆN STREAMLIT
@@ -101,7 +99,7 @@ class ConfigurationEnergySolver:
         return sorted(list(best_combo)), min_energy, sorted(list(top_candidates))
 
 # ---------------------------------------------------------
-# TIỆN ÍCH
+# TIỆN ÍCH LỌC DỮ LIỆU
 # ---------------------------------------------------------
 def parse_multi_line_input(text):
     lines = text.strip().split('\n')
@@ -151,7 +149,7 @@ with tab_file:
         content = uploaded_file.read().decode("utf-8")
         history_data = parse_multi_line_input(content)
 
-# Hiển thị trạng thái kiểm duyệt Tầng 1
+# Kiểm duyệt dữ liệu Tầng 1
 if len(history_data) >= 10:
     st.success(f"✅ TẦNG 1 HỢP LỆ: Đã nạp thành công **{len(history_data)} kỳ** lịch sử thực tế.")
 else:
@@ -187,7 +185,7 @@ if len(history_data) < 10:
 elif len(d1) != 20 or len(d2) != 20 or len(d3) != 20:
     st.warning("🔒 Tầng 3 bị khóa: Vui lòng nhập đủ 20 số cho cả 3 kỳ ở Tầng 2.")
 else:
-    # Chỉ tính toán khi 100% dữ liệu là thực tế
+    # Tính toán khi 100% dữ liệu là thực tế
     baseline_engine = HistoricalBaselineEngine(history_data)
     J_matrix = baseline_engine.compute_coupling_matrix()
 
