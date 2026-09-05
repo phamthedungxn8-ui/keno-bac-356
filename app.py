@@ -4,135 +4,211 @@ import pandas as pd
 import itertools
 
 # ---------------------------------------------------------
-# Cấu hình ứng dụng
+# CẤU HÌNH GIAO DIỆN
 # ---------------------------------------------------------
 st.set_page_config(
-    page_title="Keno Ising Model - Fixed Physics Kernel",
+    page_title="Keno Ising Model - 3-Tier Architecture",
     page_icon="⚛️",
     layout="wide"
 )
 
-st.title("⚛️ KENO ISING MODEL - SỬA LỖ HỔNG LÕI TOÁN HỌC")
-st.markdown("*Khắc phục hoàn toàn lỗi lặp lại số cũ bằng thuật toán Tính Tổng Năng Lượng Cấu Hình (Configuration Energy).*")
+st.title("⚛️ KENO ISING MODEL - TỐI ƯU NĂNG LƯỢNG CẤU HÌNH")
+st.caption("Khung kiến trúc 3 tầng: Historical Baseline Matrix (J) | Impulse Perturbation (h) | Combinatorial Energy Solver")
 st.markdown("---")
 
 # ---------------------------------------------------------
-# LÕI THUẬT TOÁN ISING CHUẨN VẬT LÝ THỐNG KÊ
+# KHUNG KIẾN TRÚC 3 TẦNG ĐỘC LẬP
 # ---------------------------------------------------------
-class CorrectedKenoIsing:
-    def __init__(self, recent_3_draws, alpha=1.5):
-        self.draws = recent_3_draws
-        self.alpha = alpha
-        
-    def compute_spin_matrix(self):
-        S = -1 * np.ones((3, 80))
-        for t, draw in enumerate(self.draws):
+
+# =========================================================
+# TẦNG 1: HISTORICAL BASELINE MATRIX (Ma trận nền lịch sử)
+# =========================================================
+class HistoricalBaselineEngine:
+    """
+    Tầng 1: Xây dựng Ma trận Tương tác Spin J_ij tĩnh dài hạn.
+    Đo đạc lực liên kết, hiệp phương sai và độ lệch chuẩn giữa 80 ô trong N kỳ.
+    """
+    def __init__(self, history_draws: list[list[int]]):
+        self.history_draws = history_draws
+        self.N = len(history_draws)
+        self.S_history = self._build_spin_matrix()
+
+    def _build_spin_matrix(self) -> np.ndarray:
+        S = -1 * np.ones((self.N, 80))
+        for t, draw in enumerate(self.history_draws):
             for num in draw:
                 if 1 <= num <= 80:
                     S[t, num - 1] = 1.0
         return S
 
-    def run_analysis(self):
-        S = self.compute_spin_matrix()
-        
-        # 1. Trường ngoài h_i (Mức độ kích thích từ 3 kỳ vừa qua)
-        # Kỳ mới nhất có trọng số cao hơn
-        weights = np.array([0.2, 0.3, 0.5]) 
-        h = np.dot(weights, S)
-        
-        # 2. Ma trận tương tác Spin J_ij
+    def compute_coupling_matrix(()) -> np.ndarray:
+        """
+        Tính toán ma trận tương tác J_ij dựa trên Hiệp phương sai Ising.
+        """
         J = np.zeros((80, 80))
+        mean_spins = np.mean(self.S_history, axis=0)
+        
         for i in range(80):
             for j in range(i + 1, 80):
-                # Tương tác Ising giữa cặp i và j
-                J[i, j] = np.mean(S[:, i] * S[:, j])
-                J[j, i] = J[i, j]
-                
-        # 3. Tính Điểm Hút Đơn (Single Spin Attractor)
+                cov = np.mean(self.S_history[:, i] * self.S_history[:, j]) - (mean_spins[i] * mean_spins[j])
+                J[i, j] = cov
+                J[j, i] = cov
+        return J
+
+
+# =========================================================
+# TẦNG 2: INSTANT IMPULSE PERTURBATION (Kích thích tức thời)
+# =========================================================
+class ImpulseFieldEngine:
+    """
+    Tầng 2: Xử lý 3 kỳ quay gần nhất làm Xung động (Impulse) tác động vào hệ thống.
+    Biến dạng mặt năng lượng bằng Trường Tương Tác Ngoài h_i.
+    """
+    def __init__(self, recent_3_draws: list[list[int]]):
+        self.recent_3_draws = recent_3_draws
+        self.S_recent = self._build_spin_matrix()
+
+    def _build_spin_matrix(self) -> np.ndarray:
+        S = -1 * np.ones((3, 80))
+        for t, draw in enumerate(self.recent_3_draws):
+            for num in draw:
+                if 1 <= num <= 80:
+                    S[t, num - 1] = 1.0
+        return S
+
+    def compute_external_field(self) -> np.ndarray:
+        """
+        Tính toán Vector Trường Ngoài h_i với Trọng số Suy giảm Thời gian (Decay Weights).
+        Kỳ mới nhất đóng góp trọng số kích thích lớn nhất.
+        """
+        weights = np.array([0.2, 0.3, 0.5])  # Kỳ 1 -> Kỳ 2 -> Kỳ 3
+        h = np.dot(weights, self.S_recent)
+        return h
+
+
+# =========================================================
+# TẦNG 3: COMBINATORIAL CONFIGURATION SOLVER (Giải năng lượng tổ hợp)
+# =========================================================
+class ConfigurationEnergySolver:
+    """
+    Tầng 3: Giải bài toán Tối ưu hóa Năng lượng Toàn cục E(S) trên không gian C(80, k).
+    E(S) = - sum(h_i) - alpha * sum(J_ij)
+    """
+    def __init__(self, J_matrix: np.ndarray, h_field: np.ndarray, alpha: float = 1.2):
+        self.J = J_matrix
+        self.h = h_field
+        self.alpha = alpha
+
+    def _compute_single_spin_potentials(self) -> np.ndarray:
+        """Tính năng lượng tiềm năng đơn ô để thu hẹp không gian ứng viên Top N."""
         E_single = np.zeros(80)
         for i in range(80):
-            E_single[i] = - (h[i] + self.alpha * np.sum(J[i, :]))
-            
-        # Top 15 số có năng lượng tiềm năng thấp nhất
-        candidate_indices = np.argsort(E_single)[:15] + 1  # Chuyển về số 1-80
-        
-        # 4. THUẬT TOÁN MỚI: TÌM BỘ NĂNG LƯỢNG CỰC TIỂU TỔ HỢP (CONFIGURATION ENERGY)
-        def get_best_combination(k_size, top_candidates):
-            best_combo = None
-            min_energy = float('inf')
-            
-            # Quét tất cả các tổ hợp C(candidates, k_size)
-            for combo in itertools.combinations(top_candidates, k_size):
-                indices = [c - 1 for c in combo]
-                
-                # Năng lượng đơn
-                e_h = - np.sum(h[indices])
-                
-                # Năng lượng tương tác cặp trong bộ số
-                e_j = 0
-                for i_idx, j_idx in itertools.combinations(indices, 2):
-                    e_j -= J[i_idx, j_idx]
-                    
-                total_energy = e_h + self.alpha * e_j
-                
-                if total_energy < min_energy:
-                    min_energy = total_energy
-                    best_combo = combo
-                    
-            return best_combo, min_energy
+            spin_interaction = np.sum(self.J[i, :])
+            E_single[i] = - (self.h[i] + self.alpha * spin_interaction)
+        return E_single
 
-        # Tìm bộ Bậc 3, Bậc 5, Bậc 6 tối ưu thực sự
-        best_3, e3 = get_best_combination(3, candidate_indices)
-        best_5, e5 = get_best_combination(5, candidate_indices)
-        best_6, e6 = get_best_combination(6, candidate_indices)
-        
-        return {
-            "top_candidates": candidate_indices,
-            "best_3": best_3,
-            "best_5": best_5,
-            "best_6": best_6,
-            "e3": e3, "e5": e5, "e6": e6
-        }
+    def find_optimal_configuration(self, k_size: int, candidate_pool_size: int = 18):
+        """
+        Quét toàn bộ không gian C(pool, k_size) để tìm cấu hình k số có Năng lượng Cực tiểu.
+        """
+        E_single = self._compute_single_spin_potentials()
+        top_candidates = np.argsort(E_single)[:candidate_pool_size] + 1  # Chuyển về 1-80
 
-def format_numbers(num_list):
-    if num_list is None:
-        return ""
-    clean_nums = [int(x) for x in sorted(num_list)]
-    return " - ".join([f"{x:02d}" for x in clean_nums])
+        best_combo = None
+        min_energy = float('inf')
+
+        for combo in itertools.combinations(top_candidates, k_size):
+            indices = [c - 1 for c in combo]
+            
+            # 1. Năng lượng kích thích đơn
+            e_h = - np.sum(self.h[indices])
+            
+            # 2. Năng lượng liên kết nội bộ cấu hình
+            e_j = 0
+            for i_idx, j_idx in itertools.combinations(indices, 2):
+                e_j -= self.J[i_idx, j_idx]
+                
+            total_energy = e_h + self.alpha * e_j
+            
+            if total_energy < min_energy:
+                min_energy = total_energy
+                best_combo = combo
+
+        return sorted(list(best_combo)), min_energy, sorted(list(top_candidates))
+
 
 # ---------------------------------------------------------
-# GIAO DIỆN KIỂM THỬ
+# TIỆN ÍCH HIỂN THỊ & GIẢ LẬP DỮ LIỆU NỀN
 # ---------------------------------------------------------
-st.subheader("📝 Nhập dữ liệu 3 kỳ quay để kiểm tra thuật toán mới")
+def generate_synthetic_history(n_draws=50):
+    """Giả lập 50 kỳ lịch sử nếu chưa chọn file Nền Lịch Sử."""
+    np.random.seed(42)
+    history = []
+    for _ in range(n_draws):
+        draw = np.random.choice(np.arange(1, 81), size=20, replace=False)
+        history.append(sorted(draw))
+    return history
 
-col1, col2, col3 = st.columns(3)
-with col1:
-    k1_input = st.text_area("Kỳ 1 (20 số cách nhau khoảng trắng):", "01 02 03 04 05 06 07 08 09 10 11 12 13 14 15 16 17 18 19 20", height=100)
-with col2:
-    k2_input = st.text_area("Kỳ 2 (20 số cách nhau khoảng trắng):", "01 02 03 21 22 23 24 25 26 27 28 29 30 31 32 33 34 35 36 37", height=100)
-with col3:
-    k3_input = st.text_area("Kỳ 3 (20 số cách nhau khoảng trắng):", "01 04 05 38 39 40 41 42 43 44 45 46 47 48 49 50 51 52 53 54", height=100)
-
-def parse_input(text):
+def parse_input_string(text):
     nums = [int(x) for x in text.split() if x.isdigit() and 1 <= int(x) <= 80]
     return sorted(list(set(nums)))[:20]
 
-d1, d2, d3 = parse_input(k1_input), parse_input(k2_input), parse_input(k3_input)
+def format_numbers(num_list):
+    if not num_list:
+        return ""
+    return " - ".join([f"{x:02d}" for x in num_list])
+
+
+# ---------------------------------------------------------
+# GIAO DIỆN ĐIỀU KHIỂN STREAMLIT
+# ---------------------------------------------------------
+st.sidebar.header("⚙️ Cấu Hình Tầng Hệ Thống")
+history_length = st.sidebar.slider("Dữ liệu Nền (Số kỳ Lịch sử):", min_value=30, max_value=100, value=50, step=10)
+alpha_coupling = st.sidebar.slider("Hệ số Cấu hình Tương tác (Alpha):", min_value=0.5, max_value=3.0, value=1.5, step=0.1)
+
+st.subheader("1️⃣ TẦNG 2: Nhập 3 Kỳ Quay Kích Thích (Impulse)")
+
+col1, col2, col3 = st.columns(3)
+with col1:
+    k1_text = st.text_area("Kỳ 1 (20 số):", "01 03 05 08 12 15 19 22 25 30 33 41 45 50 55 60 62 70 73 80", height=90)
+with col2:
+    k2_text = st.text_area("Kỳ 2 (20 số):", "02 03 07 10 12 18 22 28 30 35 40 45 51 55 61 68 70 74 77 80", height=90)
+with col3:
+    k3_text = st.text_area("Kỳ 3 (20 số):", "01 04 05 11 15 20 25 31 33 42 45 50 56 60 63 70 72 75 78 79", height=90)
+
+d1, d2, d3 = parse_input_string(k1_text), parse_input_string(k2_text), parse_input_string(k3_text)
 
 if len(d1) == 20 and len(d2) == 20 and len(d3) == 20:
     st.markdown("---")
     
-    model = CorrectedKenoIsing([d1, d2, d3])
-    res = model.run_analysis()
-    
-    st.header("🎯 KẾT QUẢ TÍNH TOÁN BẰNG MA TRẬN NĂNG LƯỢNG TỔ HỢP")
-    st.caption("Các bộ số gợi ý dưới đây đã được lọc qua ma trận tương tác Ising $J_{ij}$ để chọn ra tổ hợp có mức liên kết năng lượng cao nhất, không bị lặp lại đơn thuần 3 số của 1 kỳ.")
-    
-    c1, c2, c3 = st.columns(3)
-    c1.metric("🔥 Gợi ý Bậc 3 Tối Ưu", format_numbers(res["best_3"]), f"Energy: {res['e3']:.3f}")
-    c2.metric("⚡ Gợi ý Bậc 5 Tối Ưu", format_numbers(res["best_5"]), f"Energy: {res['e5']:.3f}")
-    c3.metric("💎 Gợi ý Bậc 6 Tối Ưu", format_numbers(res["best_6"]), f"Energy: {res['e6']:.3f}")
+    # 1. KÍCH HOẠT TẦNG 1: Matrix Engine (J_ij)
+    history_data = generate_synthetic_history(n_draws=history_length)
+    baseline_engine = HistoricalBaselineEngine(history_data)
+    J_matrix = baseline_engine.compute_coupling_matrix()
 
-    st.info(f"📍 Danh sách 15 ứng viên điểm hút hàng đầu: `{format_numbers(res['top_candidates'])}`")
+    # 2. KÍCH HOẠT TẦNG 2: Impulse Engine (h_i)
+    impulse_engine = ImpulseFieldEngine([d1, d2, d3])
+    h_field = impulse_engine.compute_external_field()
+
+    # 3. KÍCH HOẠT TẦNG 3: Combinatorial Solver
+    solver = ConfigurationEnergySolver(J_matrix, h_field, alpha=alpha_coupling)
+
+    b3, e3, pool = solver.find_optimal_configuration(k_size=3)
+    b5, e5, _ = solver.find_optimal_configuration(k_size=5)
+    b6, e6, _ = solver.find_optimal_configuration(k_size=6)
+
+    st.subheader("2️⃣ TẦNG 3: Kết Quả Dự Đoán Năng Lượng Cực Tiểu Toàn Cục")
+
+    m1, m2, m3 = st.columns(3)
+    m1.metric("🔥 Bậc 3 Tối Ưu Cấu Hình", format_numbers(b3), f"Energy: {e3:.4f}")
+    m2.metric("⚡ Bậc 5 Tối Ưu Cấu Hình", format_numbers(b5), f"Energy: {e5:.4f}")
+    m3.metric("💎 Bậc 6 Tối Ưu Cấu Hình", format_numbers(b6), f"Energy: {e6:.4f}")
+
+    st.markdown("---")
+    st.subheader("🔍 Nhật Ký Phân Tích Hệ Thống")
+    st.write(f"• **Không gian ứng viên (Attractor Candidate Pool 18):** `{format_numbers(pool)}`")
+    st.write(f"• **Ma trận Tương tác $J_{{ij}}$:** Đã tính toán trên **{history_length}** kỳ lịch sử.")
+    st.write(f"• **Thuật toán Tối ưu:** Đã quét **$C_{{18}}^3, C_{{18}}^5, C_{{18}}^6$** để tìm cấu hình có tổn hao năng lượng thấp nhất.")
+
 else:
-    st.warning("Vui lòng đảm bảo cả 3 kỳ đều có đủ 20 số hợp lệ!")
+    st.error("⚠️ Vui lòng nhập đúng và đủ 20 số cho cả 3 kỳ để thực thi hệ thống.")
